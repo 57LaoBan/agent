@@ -19,6 +19,7 @@ test/e2e/             端到端测试
 docs/                 设计和进度文档
 config/               配置模板
 scripts/              本地辅助脚本
+web/                  前端工作台
 ```
 
 ## 运行百炼冒烟测试
@@ -32,6 +33,14 @@ python .\test\smoke\smoke_test.py
 ```powershell
 $env:PYTHONPATH="src"
 python -m unittest discover -s test -p "test_*.py"
+```
+
+## 运行前端工作台
+
+```powershell
+cd .\web
+npm install
+npm run dev
 ```
 
 ## 第一阶段原则
