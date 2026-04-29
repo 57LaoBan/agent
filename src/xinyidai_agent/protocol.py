@@ -44,6 +44,7 @@ RouteScene = Literal[
 ]
 RiskLevel = Literal["read_only", "link_create", "state_create", "state_update", "final_submit"]
 ToolStatus = Literal["proposed", "running", "success", "failed", "blocked"]
+ToolCategory = Literal["knowledge", "data_query", "application", "authorization", "status", "utility"]
 
 
 class SourceDocument(BaseModel):
@@ -78,6 +79,7 @@ class RouteDecision(BaseModel):
     filled_slots: dict[str, Any] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
     allowed_tools: list[str] = Field(default_factory=list)
+    allowed_tool_categories: list[ToolCategory] = Field(default_factory=list)
     risk_level: RiskLevel = "read_only"
     route_reason: str
     should_call_model: bool = True
@@ -89,6 +91,7 @@ class ToolCall(BaseModel):
 
     tool_call_id: str
     tool_name: str
+    tool_category: ToolCategory | None = None
     arguments: dict[str, Any] = Field(default_factory=dict)
     risk_level: RiskLevel = "read_only"
     confirmation_required: bool = False
@@ -121,6 +124,7 @@ class ToolResult(BaseModel):
 
     tool_call_id: str
     tool_name: str
+    tool_category: ToolCategory | None = None
     status: ToolStatus
     output: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None

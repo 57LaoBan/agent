@@ -10,11 +10,14 @@
 - 加入 FastAPI HTTP 入口，接口层不承载业务编排。
 - 新增 `web/` 前端工作台，左侧聊天区只展示用户可见内容，右侧检测窗口展示意图、工具、状态和原始事件。
 - 扩展 `AgentEvent`、`RouteDecision`、`ToolCall`、`ToolResult`、`PendingAction` 等协议，并将 runtime 升级为循环式事件生成器。
+- 新增 `tools` 层，将 `rag_search` 和 mock 授信额度查询封装为工具，runtime 不再直接接收 retriever。
+- 为工具增加分类、风险等级和工具描述，注册表可按分类暴露工具，并拦截当前路由不允许的工具调用。
 
 ## 当前设计取舍
 
 - 主路径采用单 Agent 问答，不引入复杂 planner 或多 agent 协作。
-- RAG、模型调用、响应契约、诊断 trace 分模块维护。
+- RAG 作为 `rag_search` 工具接入，模型调用、响应契约、诊断 trace 分模块维护。
+- 路由阶段先决定允许的工具分类，再暴露该分类下的具体工具，减少模型误调用和越权调用。
 - 右侧检测窗口后续直接消费结构化 trace，而不是解析聊天文本。
 - 前端按 `visibility` 分流同一条 Agent 事件流，避免把诊断过程污染到聊天框。
 

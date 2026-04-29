@@ -32,9 +32,10 @@ export type ChatMessage = {
 
 export type PendingAction = {
   action_id: string;
+  tool_call?: Record<string, unknown>;
   title: string;
   summary: string;
-  risk_level: "read_only" | "link_create" | "state_create" | "final_submit";
+  risk_level?: "read_only" | "link_create" | "state_create" | "state_update" | "final_submit";
   confirm_label: string;
   cancel_label: string;
   details: Array<{ label: string; value: string }>;
@@ -45,15 +46,19 @@ export type RouteSnapshot = {
   intent: string;
   confidence: number;
   allowed_tools: string[];
+  allowed_tool_categories: string[];
   missing_slots: string[];
   risk_level: string;
   route_reason: string;
 };
 
 export type ToolSnapshot = {
+  tool_call_id: string;
   tool_name: string;
-  status: "proposed" | "running" | "success" | "blocked";
+  tool_category?: string;
+  status: "proposed" | "running" | "success" | "failed" | "blocked";
   risk_level: string;
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
+  phases: string[];
 };

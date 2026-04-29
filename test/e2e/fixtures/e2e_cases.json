@@ -1,0 +1,55 @@
+{
+  "backend_cases": [
+    {
+      "id": "knowledge_qa_live_model",
+      "message": "信易贷适合哪些企业？",
+      "expected_scene": "KNOWLEDGE_QA",
+      "expected_allowed_tools": ["rag_search"],
+      "expected_allowed_tool_categories": ["knowledge"],
+      "expected_tool": "rag_search",
+      "expected_tool_category": "knowledge",
+      "requires_live_model": true
+    },
+    {
+      "id": "credit_amount_tool",
+      "message": "杭州示例科技有限公司能贷多少钱？",
+      "metadata": {
+        "company_name": "杭州示例科技有限公司"
+      },
+      "expected_scene": "DATA_QUERY",
+      "expected_allowed_tools": ["query_credit_amount"],
+      "expected_allowed_tool_categories": ["data_query"],
+      "expected_tool": "query_credit_amount",
+      "expected_tool_category": "data_query",
+      "expected_output": {
+        "credit_amount": "50万元"
+      },
+      "requires_live_model": true
+    },
+    {
+      "id": "application_confirmation",
+      "message": "我要申请小微税贷",
+      "metadata": {
+        "company_name": "杭州示例科技有限公司",
+        "product_name": "小微税贷"
+      },
+      "expected_scene": "LOAN_APPLY",
+      "expected_allowed_tools": ["search_product", "create_application", "create_authorization_link"],
+      "expected_allowed_tool_categories": ["knowledge", "application", "authorization"],
+      "expected_pending_tool": "create_application",
+      "expected_pending_tool_category": "application",
+      "requires_live_model": false
+    }
+  ],
+  "frontend_cases": [
+    {
+      "id": "frontend_credit_amount_live_sse",
+      "message": "杭州示例科技有限公司能贷多少钱？",
+      "expected_scene": "DATA_QUERY",
+      "expected_allowed_tools": ["query_credit_amount"],
+      "expected_tool": "query_credit_amount",
+      "expected_tool_category": "data_query",
+      "expected_visible_text": "50万元"
+    }
+  ]
+}

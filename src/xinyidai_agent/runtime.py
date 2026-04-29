@@ -21,7 +21,7 @@ from xinyidai_agent.protocol import (
     ToolCall,
     ToolResult,
 )
-from xinyidai_agent.rag import EmptyRetriever, Retriever
+from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry
 
 
 class ControlledAgentLoop:
@@ -34,11 +34,11 @@ class ControlledAgentLoop:
     def __init__(
         self,
         model: ChatModel,
-        retriever: Retriever | None = None,
+        tool_registry: ToolRegistry | None = None,
         max_steps: int = 3,
     ) -> None:
         self._model = model
-        self._retriever = retriever or EmptyRetriever()
+        self._tool_registry = tool_registry or default_tool_registry()
         self._max_steps = max_steps
 
     def run(self, request: ChatRequest) -> Iterator[AgentEvent]:
@@ -160,6 +160,7 @@ class ControlledAgentLoop:
                     "product_name": request.metadata.get("product_name", "小微税贷"),
                 },
                 allowed_tools=["search_product", "create_application", "create_authorization_link"],
+                allowed_tool_categories=["knowledge", "application", "authorization"],
                 risk_level="state_create",
                 route_reason="用户表达贷款申请意图，创建申请前必须进行执行确认。",
                 should_call_model=True,
@@ -174,6 +175,7 @@ class ControlledAgentLoop:
                 required_slots=["company_name"],
                 filled_slots={"company_name": request.metadata.get("company_name", "杭州示例科技有限公司")},
                 allowed_tools=["query_credit_amount"],
+                allowed_tool_categories=["data_query"],
                 risk_level="read_only",
                 route_reason="用户询问授信额度，数值类答案必须通过只读工具查询。",
                 should_call_model=True,
@@ -185,6 +187,7 @@ class ControlledAgentLoop:
             intent="POLICY_OR_PRODUCT_QA",
             confidence=0.8,
             allowed_tools=["rag_search"],
+            allowed_tool_categories=["knowledge"],
             risk_level="read_only",
             route_reason="用户咨询政策或产品信息，优先通过知识库检索后回答。",
             should_call_model=True,
@@ -199,6 +202,7 @@ class ControlledAgentLoop:
             return ToolCall(
                 tool_call_id=str(uuid4()),
                 tool_name="query_credit_amount",
+                tool_category="data_query",
                 arguments={
                     "company_name": route.filled_slots.get("company_name"),
                     "query": request.user_message,
@@ -211,6 +215,7 @@ class ControlledAgentLoop:
             return ToolCall(
                 tool_call_id=str(uuid4()),
                 tool_name="create_application",
+                tool_category="application",
                 arguments={
                     "company_name": route.filled_slots.get("company_name"),
                     "product_name": route.filled_slots.get("product_name"),
@@ -224,6 +229,7 @@ class ControlledAgentLoop:
             return ToolCall(
                 tool_call_id=str(uuid4()),
                 tool_name="rag_search",
+                tool_category="knowledge",
                 arguments={"query": request.user_message, "top_k": request.top_k},
                 risk_level="read_only",
                 reason="知识问答需要检索证据后再生成回答。",
@@ -255,47 +261,8 @@ class ControlledAgentLoop:
         route: RouteDecision,
         tool_call: ToolCall,
     ) -> tuple[ToolResult, list[SourceDocument], RetrievalTrace | None]:
-        if tool_call.tool_name == "query_credit_amount":
-            result = ToolResult(
-                tool_call_id=tool_call.tool_call_id,
-                tool_name=tool_call.tool_name,
-                status="success",
-                output={
-                    "company_name": tool_call.arguments.get("company_name"),
-                    "credit_amount": "50万元",
-                    "data_time": "2026-04-28",
-                },
-                business_status="CREDIT_AMOUNT_FOUND",
-                terminal=True,
-                model_observation="企业授信额度为 50 万元，可向用户说明该结果来自 mock 只读接口。",
-            )
-            return result, [], None
-
-        if tool_call.tool_name == "rag_search":
-            sources, retrieval_trace = self._retriever.retrieve(request.user_message, request.top_k)
-            result = ToolResult(
-                tool_call_id=tool_call.tool_call_id,
-                tool_name=tool_call.tool_name,
-                status="success",
-                output={
-                    "sources": [source.model_dump() for source in sources],
-                    "retrieval_trace": retrieval_trace.model_dump(),
-                },
-                business_status="RAG_RESULT_READY",
-                terminal=True,
-                model_observation="知识库检索已完成，回答必须基于证据；证据不足时说明缺口。",
-            )
-            return result, sources, retrieval_trace
-
-        result = ToolResult(
-            tool_call_id=tool_call.tool_call_id,
-            tool_name=tool_call.tool_name,
-            status="failed",
-            error_message=f"未注册工具：{tool_call.tool_name}",
-            terminal=True,
-            user_visible_message="当前工具尚未接入，请稍后再试。",
-        )
-        return result, [], None
+        execution = self._tool_registry.execute(request, route, tool_call)
+        return execution.result, execution.sources, execution.retrieval_trace
 
     def _summarize_tool_result(
         self,

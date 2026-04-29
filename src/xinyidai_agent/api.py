@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from xinyidai_agent.config import AgentConfig, load_env_file
@@ -14,6 +15,13 @@ from xinyidai_agent.runtime import ControlledAgentLoop
 def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
     app = FastAPI(title="信易贷聊天 Agent", version="0.1.0")
     agent_loop = loop or _build_default_loop()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -16,7 +16,10 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { confirmMockAction, runMockTurn } from "./mockAgent";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { getAgentRuntimeLabel, runAgentTurn } from "./agentClient";
+import { confirmMockAction } from "./mockAgent";
 import type { AgentEvent, ChatMessage, PendingAction, RouteSnapshot, ToolSnapshot } from "./types";
 
 const presets = ["我能贷多少钱？", "我要申请小微税贷", "信易贷适合哪些企业？"];
@@ -43,37 +46,66 @@ export function App() {
   }, [events]);
 
   const tools = useMemo(() => {
-    const snapshots: ToolSnapshot[] = [];
+    const snapshots = new Map<string, ToolSnapshot>();
+    const getSnapshot = (toolCallId: string, patch: Partial<ToolSnapshot>) => {
+      const current = snapshots.get(toolCallId);
+      const next: ToolSnapshot = {
+        tool_call_id: toolCallId,
+        tool_name: patch.tool_name ?? current?.tool_name ?? "unknown",
+        tool_category: patch.tool_category ?? current?.tool_category,
+        status: patch.status ?? current?.status ?? "proposed",
+        risk_level: patch.risk_level ?? current?.risk_level ?? "unknown",
+        input: patch.input ?? current?.input,
+        output: patch.output ?? current?.output,
+        phases: current?.phases ?? [],
+      };
+      snapshots.set(toolCallId, next);
+      return next;
+    };
+
     for (const event of events) {
       if (event.event_type === "tool_call_proposed") {
-        snapshots.push({
+        const toolCallId = String(event.payload.tool_call_id ?? `${event.turn_id}-${event.sequence}`);
+        const snapshot = getSnapshot(toolCallId, {
           tool_name: String(event.payload.tool_name),
+          tool_category: String(event.payload.tool_category ?? "unknown"),
           status: "proposed",
           risk_level: String(event.payload.risk_level ?? "unknown"),
-          input: event.payload.input as Record<string, unknown> | undefined,
+          input: (event.payload.arguments ?? event.payload.input) as Record<string, unknown> | undefined,
         });
+        snapshot.phases = [...snapshot.phases, "proposed"];
       }
       if (event.event_type === "tool_started") {
-        snapshots.push({
-          tool_name: String(event.payload.tool_name),
+        const toolCall = event.payload.tool_call as Record<string, unknown> | undefined;
+        const toolCallId = String(toolCall?.tool_call_id ?? event.payload.tool_call_id ?? `${event.turn_id}-${event.sequence}`);
+        const snapshot = getSnapshot(toolCallId, {
+          tool_name: String(toolCall?.tool_name ?? event.payload.tool_name),
+          tool_category: String(toolCall?.tool_category ?? event.payload.tool_category ?? "unknown"),
           status: "running",
-          risk_level: "unknown",
+          risk_level: String(toolCall?.risk_level ?? "unknown"),
         });
+        snapshot.phases = [...snapshot.phases, "running"];
       }
       if (event.event_type === "tool_result") {
-        snapshots.push({
+        const toolCallId = String(event.payload.tool_call_id ?? `${event.turn_id}-${event.sequence}`);
+        const snapshot = getSnapshot(toolCallId, {
           tool_name: String(event.payload.tool_name),
-          status: "success",
-          risk_level: "unknown",
+          tool_category: String(event.payload.tool_category ?? "unknown"),
+          status: String(event.payload.status ?? "success") as ToolSnapshot["status"],
+          risk_level: String(event.payload.risk_level ?? "unknown"),
           output: event.payload.output as Record<string, unknown> | undefined,
         });
+        snapshot.phases = [...snapshot.phases, String(event.payload.status ?? "success")];
       }
     }
-    return snapshots;
+    return [...snapshots.values()];
   }, [events]);
 
   const states = useMemo(
-    () => events.filter((event) => event.event_type === "state_changed").map((event) => String(event.payload.state)),
+    () =>
+      events
+        .filter((event) => event.event_type === "state_changed")
+        .map((event) => String(event.payload.to_state ?? event.payload.state)),
     [events],
   );
 
@@ -122,7 +154,17 @@ export function App() {
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", content: text }]);
 
     try {
-      await runMockTurn(text, appendEvent);
+      await runAgentTurn(text, appendEvent);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: error instanceof Error ? error.message : "Agent 请求失败，请检查后端服务。",
+          status: "done",
+        },
+      ]);
     } finally {
       setRunning(false);
     }
@@ -159,7 +201,7 @@ export function App() {
         </div>
         <div className="topbar-status">
           <span className="status-dot" />
-          Mock Event Stream
+          {getAgentRuntimeLabel()}
         </div>
       </header>
 
@@ -181,7 +223,11 @@ export function App() {
               <div className={`message-row ${message.role}`} key={message.id}>
                 <div className="avatar">{message.role === "assistant" ? <Bot size={17} /> : <UserRound size={17} />}</div>
                 <div className="bubble">
-                  <p>{message.content}</p>
+                  {message.role === "assistant" ? (
+                    <MarkdownMessage content={message.content} />
+                  ) : (
+                    <p className="plain-message">{message.content}</p>
+                  )}
                   {message.status === "streaming" && <span className="cursor" />}
                 </div>
               </div>
@@ -270,6 +316,14 @@ export function App() {
   );
 }
 
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <div className="markdown-message">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  );
+}
+
 function RoutePanel({ route }: { route: RouteSnapshot | null }) {
   if (!route) return <EmptyState icon={<FileSearch size={20} />} text="等待意图识别事件" />;
 
@@ -285,6 +339,14 @@ function RoutePanel({ route }: { route: RouteSnapshot | null }) {
           <code key={tool}>{tool}</code>
         ))}
       </div>
+      {route.allowed_tool_categories?.length > 0 && (
+        <div className="tool-list">
+          <span>允许分类</span>
+          {route.allowed_tool_categories.map((category) => (
+            <code key={category}>{category}</code>
+          ))}
+        </div>
+      )}
       <p className="reason">{route.route_reason}</p>
     </div>
   );
@@ -301,7 +363,27 @@ function ToolPanel({ tools }: { tools: ToolSnapshot[] }) {
             <strong>{tool.tool_name}</strong>
             <span>{tool.status}</span>
           </div>
-          <pre>{JSON.stringify(tool.input ?? tool.output ?? {}, null, 2)}</pre>
+          <div className="tool-meta">
+            <code>{tool.tool_category ?? "unknown"}</code>
+            <code>{tool.risk_level}</code>
+          </div>
+          <div className="tool-phases">
+            {tool.phases.map((phase, phaseIndex) => (
+              <span key={`${phase}-${phaseIndex}`}>{phase}</span>
+            ))}
+          </div>
+          {tool.input && (
+            <>
+              <small>输入参数</small>
+              <pre>{JSON.stringify(tool.input, null, 2)}</pre>
+            </>
+          )}
+          {tool.output && (
+            <>
+              <small>输出结果</small>
+              <pre>{JSON.stringify(tool.output, null, 2)}</pre>
+            </>
+          )}
         </div>
       ))}
     </div>
