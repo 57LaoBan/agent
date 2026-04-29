@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
 from xinyidai_agent.config import AgentConfig, load_env_file
 from xinyidai_agent.llm import OpenAICompatibleChatModel
-from xinyidai_agent.protocol import ChatRequest, ChatResponse
+from xinyidai_agent.protocol import AgentEvent, ChatRequest, ChatResponse
 from xinyidai_agent.runtime import ControlledAgentLoop
 
 
@@ -20,9 +23,23 @@ def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
     def chat(request: ChatRequest) -> ChatResponse:
         return agent_loop.answer(request)
 
+    @app.post("/chat/stream")
+    def chat_stream(request: ChatRequest) -> StreamingResponse:
+        return StreamingResponse(
+            _to_sse(agent_loop.run(request)),
+            media_type="text/event-stream",
+        )
+
     return app
 
 
 def _build_default_loop() -> ControlledAgentLoop:
     load_env_file(AgentConfig.default_env_path())
     return ControlledAgentLoop(model=OpenAICompatibleChatModel(AgentConfig.from_env()))
+
+
+def _to_sse(events: Iterator[AgentEvent]) -> Iterator[str]:
+    for event in events:
+        payload = event.model_dump_json()
+        yield f"event: {event.event_type}\n"
+        yield f"data: {payload}\n\n"
