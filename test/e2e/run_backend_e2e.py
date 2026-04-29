@@ -121,6 +121,14 @@ def run_case(api_url: str, case: dict[str, Any]) -> None:
     response = post_json(f"{api_url}/chat", request_payload)
 
     assert_equal(response["route_decision"]["scene"], case["expected_scene"], case, "scene")
+    if expected_intent := case.get("expected_intent"):
+        assert_equal(response["route_decision"]["intent"], expected_intent, case, "intent")
+    if expected_min_confidence := case.get("expected_min_confidence"):
+        actual_confidence = response["route_decision"]["confidence"]
+        if actual_confidence < expected_min_confidence:
+            raise AssertionError(
+                f"{case['id']} 置信度过低：expected>={expected_min_confidence}, actual={actual_confidence}"
+            )
     if expected_allowed_tools := case.get("expected_allowed_tools"):
         assert_equal(
             response["route_decision"]["allowed_tools"],
@@ -134,6 +142,10 @@ def run_case(api_url: str, case: dict[str, Any]) -> None:
         case,
         "allowed_tool_categories",
     )
+    if expected_stop_reason := case.get("expected_stop_reason"):
+        assert_equal(response.get("stop_reason"), expected_stop_reason, case, "stop_reason")
+    if expected_business_status := case.get("expected_business_status"):
+        assert_equal(response.get("business_status"), expected_business_status, case, "business_status")
 
     if expected_tool := case.get("expected_tool"):
         tool_result = first_tool_result(response, expected_tool)
@@ -153,9 +165,16 @@ def run_case(api_url: str, case: dict[str, Any]) -> None:
             case,
             "pending_tool_category",
         )
+        for text in case.get("expected_pending_contains", []):
+            pending_text = json.dumps(pending_action, ensure_ascii=False)
+            if text not in pending_text:
+                raise AssertionError(f"{case['id']} pending_action 不包含预期文本：{text}")
 
     if case.get("requires_live_model") and not response.get("answer"):
         raise AssertionError(f"{case['id']} 期望真实模型生成 answer，但 answer 为空")
+    for text in case.get("expected_answer_contains", []):
+        if text not in response.get("answer", ""):
+            raise AssertionError(f"{case['id']} answer 不包含预期文本：{text}")
 
     print(f"[e2e] PASS backend/{case['id']}")
 

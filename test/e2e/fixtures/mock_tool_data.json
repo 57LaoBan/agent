@@ -1,0 +1,19 @@
+{
+  "credit_amounts": [
+    {
+      "company_name": "杭州示例科技有限公司",
+      "credit_amount": "50万元",
+      "data_time": "2026-04-28",
+      "source": "mock query_credit_amount 只读接口"
+    }
+  ],
+  "rag_sources": [
+    {
+      "source_id": "policy-1",
+      "title": "信易贷适用对象测试政策",
+      "content": "信易贷主要面向依法经营、信用记录良好、有融资需求的小微企业和个体工商户。",
+      "source_type": "policy",
+      "score": 0.91
+    }
+  ]
+}

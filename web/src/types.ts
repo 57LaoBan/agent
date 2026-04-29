@@ -50,6 +50,7 @@ export type RouteSnapshot = {
   missing_slots: string[];
   risk_level: string;
   route_reason: string;
+  route_source?: string;
 };
 
 export type ToolSnapshot = {

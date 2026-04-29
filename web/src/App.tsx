@@ -333,6 +333,7 @@ function RoutePanel({ route }: { route: RouteSnapshot | null }) {
       <Metric label="意图" value={route.intent} />
       <Metric label="置信度" value={`${Math.round(route.confidence * 100)}%`} />
       <Metric label="风险等级" value={route.risk_level} />
+      <Metric label="判断来源" value={route.route_source ?? "unknown"} />
       <div className="tool-list">
         <span>允许工具</span>
         {route.allowed_tools.map((tool) => (

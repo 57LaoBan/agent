@@ -8,11 +8,14 @@ from xinyidai_agent.protocol import (
     RetrievalTrace,
     RouteDecision,
     RiskLevel,
+    SlotName,
     SourceDocument,
     ToolCategory,
     ToolCall,
     ToolResult,
 )
+
+SlotValueType = str
 
 
 @dataclass(frozen=True)
@@ -23,12 +26,23 @@ class ToolExecution:
 
 
 @dataclass(frozen=True)
+class SlotSpec:
+    name: SlotName
+    value_type: SlotValueType
+    required: bool = True
+    description: str = ""
+    allow_empty: bool = False
+
+
+@dataclass(frozen=True)
 class ToolSpec:
     name: str
     category: ToolCategory
     risk_level: RiskLevel
     description: str
     requires_confirmation: bool = False
+    input_slots: list[SlotSpec] = field(default_factory=list)
+    output_slots: list[SlotSpec] = field(default_factory=list)
     input_schema: dict[str, object] = field(default_factory=dict)
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from time import perf_counter
 from uuid import uuid4
 
 from xinyidai_agent.llm import ChatModel
@@ -12,8 +13,12 @@ from xinyidai_agent.protocol import (
     ChatRequest,
     ChatResponse,
     DiagnosticEvent,
+    EvidenceState,
     EventVisibility,
+    ModelDecision,
     PendingAction,
+    PerformanceSummary,
+    PerformanceStage,
     RetrievalTrace,
     RouteDecision,
     SourceDocument,
@@ -21,6 +26,7 @@ from xinyidai_agent.protocol import (
     ToolCall,
     ToolResult,
 )
+from xinyidai_agent.router import ControlledIntentRouter, IntentRouter
 from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry
 
 
@@ -34,10 +40,12 @@ class ControlledAgentLoop:
     def __init__(
         self,
         model: ChatModel,
+        router: IntentRouter | None = None,
         tool_registry: ToolRegistry | None = None,
         max_steps: int = 3,
     ) -> None:
         self._model = model
+        self._router = router or ControlledIntentRouter(model=model)
         self._tool_registry = tool_registry or default_tool_registry()
         self._max_steps = max_steps
 
@@ -45,9 +53,9 @@ class ControlledAgentLoop:
         context = _RunContext(turn_id=str(uuid4()))
         yield context.event("turn_started", "diagnostic", {"user_message": request.user_message})
         yield context.transition("LISTENING", "ROUTING", "开始识别业务意图")
-        yield context.event("route_started", "diagnostic", {"strategy": "rule_first_model_later"})
+        yield context.event("route_started", "diagnostic", {"strategy": "rule_first_model_then_policy"})
 
-        route = self._route(request)
+        route = self._router.route(request)
         yield context.event("route_decision", "diagnostic", route.model_dump())
 
         if route.missing_slots:
@@ -98,7 +106,7 @@ class ControlledAgentLoop:
 
             if tool_result.terminal:
                 yield context.transition("OBSERVING_RESULT", "ANSWERING", "工具结果满足本轮收敛条件")
-                answer = self._summarize_tool_result(request, route, tool_result, sources)
+                answer = self._answer_from_terminal_tool(request, route, tool_result, sources)
                 yield from context.user_answer_events(answer)
                 yield context.transition("ANSWERING", "FINISHED", "已基于工具结果生成回答")
                 yield context.event(
@@ -118,21 +126,45 @@ class ControlledAgentLoop:
         yield context.event("turn_finished", "diagnostic", {"stop_reason": "max_steps"})
 
     def answer(self, request: ChatRequest) -> ChatResponse:
+        started_at = perf_counter()
         events = list(self.run(request))
+        duration_ms = (perf_counter() - started_at) * 1000
         final_answer = self._extract_final_answer(events)
         route_decision = self._extract_route(events)
         tool_trace = self._extract_tool_trace(events)
         pending_action = self._extract_pending_action(events)
         retrieval_trace = self._extract_retrieval_trace(events)
         sources = self._extract_sources(tool_trace)
+        stop_reason = self._extract_stop_reason(events)
+        business_status = self._extract_business_status(tool_trace, stop_reason)
+        evidence = self._build_evidence(route_decision, tool_trace, sources, retrieval_trace)
+        model_decision = self._build_model_decision(route_decision, stop_reason, evidence, pending_action)
+        actions = self._extract_actions(tool_trace)
+        task_stage = self._task_stage(stop_reason)
 
         return ChatResponse(
             answer=final_answer,
+            stop_reason=stop_reason,
+            business_status=business_status,
+            task_stage=task_stage,
             sources=sources,
             route_decision=route_decision,
             retrieval_trace=retrieval_trace,
             tool_trace=tool_trace,
             pending_action=pending_action,
+            evidence=evidence,
+            model_decision=model_decision,
+            performance=PerformanceSummary(
+                total_ms=duration_ms,
+                stages=[
+                    PerformanceStage(
+                        name="agent_turn",
+                        duration_ms=duration_ms,
+                        percentage=100.0,
+                    )
+                ],
+            ),
+            actions=actions,
             events=events,
             diagnostics=[
                 DiagnosticEvent(
@@ -142,56 +174,11 @@ class ControlledAgentLoop:
                         "max_steps": self._max_steps,
                         "event_count": len(events),
                         "tool_calls": len(tool_trace),
+                        "stop_reason": stop_reason,
+                        "business_status": business_status,
                     },
                 )
             ],
-        )
-
-    def _route(self, request: ChatRequest) -> RouteDecision:
-        message = request.user_message
-        if any(keyword in message for keyword in ("申请", "办理", "贷款链接")):
-            return RouteDecision(
-                scene="LOAN_APPLY",
-                intent="CREATE_APPLICATION",
-                confidence=0.88,
-                required_slots=["company_name", "product_name"],
-                filled_slots={
-                    "company_name": request.metadata.get("company_name", "杭州示例科技有限公司"),
-                    "product_name": request.metadata.get("product_name", "小微税贷"),
-                },
-                allowed_tools=["search_product", "create_application", "create_authorization_link"],
-                allowed_tool_categories=["knowledge", "application", "authorization"],
-                risk_level="state_create",
-                route_reason="用户表达贷款申请意图，创建申请前必须进行执行确认。",
-                should_call_model=True,
-                should_call_tool=True,
-            )
-
-        if any(keyword in message for keyword in ("额度", "能贷", "多少钱", "授信")):
-            return RouteDecision(
-                scene="DATA_QUERY",
-                intent="CREDIT_LIMIT_QUERY",
-                confidence=0.91,
-                required_slots=["company_name"],
-                filled_slots={"company_name": request.metadata.get("company_name", "杭州示例科技有限公司")},
-                allowed_tools=["query_credit_amount"],
-                allowed_tool_categories=["data_query"],
-                risk_level="read_only",
-                route_reason="用户询问授信额度，数值类答案必须通过只读工具查询。",
-                should_call_model=True,
-                should_call_tool=True,
-            )
-
-        return RouteDecision(
-            scene="KNOWLEDGE_QA",
-            intent="POLICY_OR_PRODUCT_QA",
-            confidence=0.8,
-            allowed_tools=["rag_search"],
-            allowed_tool_categories=["knowledge"],
-            risk_level="read_only",
-            route_reason="用户咨询政策或产品信息，优先通过知识库检索后回答。",
-            should_call_model=True,
-            should_call_tool=True,
         )
 
     def _plan_tool(self, request: ChatRequest, route: RouteDecision) -> ToolCall | None:
@@ -274,6 +261,17 @@ class ControlledAgentLoop:
         messages = self._build_messages(request.user_message, route, tool_result, sources)
         return self._model.complete(messages)
 
+    def _answer_from_terminal_tool(
+        self,
+        request: ChatRequest,
+        route: RouteDecision,
+        tool_result: ToolResult,
+        sources: list[SourceDocument],
+    ) -> str:
+        if tool_result.user_visible_message and tool_result.business_status in {"PARTIAL_DATA", "NOT_FOUND"}:
+            return tool_result.user_visible_message
+        return self._summarize_tool_result(request, route, tool_result, sources)
+
     def _answer_without_tool(self, request: ChatRequest, route: RouteDecision) -> str:
         messages = [
             {
@@ -316,7 +314,16 @@ class ControlledAgentLoop:
         ]
 
     def _build_clarifying_question(self, route: RouteDecision) -> str:
-        missing = "、".join(route.missing_slots)
+        if "user_intent" in route.missing_slots:
+            return "我还没判断出您要办理哪类事项。您是想咨询政策、查询授信额度，还是发起贷款申请？"
+
+        labels = {
+            "company_name": "企业名称",
+            "product_name": "贷款产品",
+            "application_id": "申请编号",
+        }
+        readable_slots = [labels.get(slot, slot) for slot in route.missing_slots]
+        missing = "、".join(readable_slots)
         return f"为了继续处理这个请求，请先补充：{missing}。"
 
     def _format_sources(self, sources: list[SourceDocument]) -> str:
@@ -373,6 +380,116 @@ class ControlledAgentLoop:
             if isinstance(raw_sources, list):
                 sources.extend(SourceDocument.model_validate(source) for source in raw_sources)
         return sources
+
+    def _extract_stop_reason(self, events: list[AgentEvent]) -> str | None:
+        for event in reversed(events):
+            if event.event_type == "turn_finished":
+                value = event.payload.get("stop_reason")
+                return str(value) if value else None
+        return None
+
+    def _extract_business_status(self, tool_trace: list[ToolResult], stop_reason: str | None) -> str:
+        for result in reversed(tool_trace):
+            if result.business_status:
+                return result.business_status
+            if result.envelope:
+                return result.envelope.status
+        if stop_reason == "waiting_confirmation":
+            return "AUTH_REQUIRED"
+        if stop_reason in {"tool_failed", "max_steps"}:
+            return "ERROR"
+        return "NO_TOOL_USED"
+
+    def _build_evidence(
+        self,
+        route: RouteDecision | None,
+        tool_trace: list[ToolResult],
+        sources: list[SourceDocument],
+        retrieval_trace: RetrievalTrace | None,
+    ) -> EvidenceState:
+        if route is not None and route.missing_slots:
+            return EvidenceState(
+                ready=False,
+                reason="missing_slots",
+                missing=route.missing_slots,
+            )
+        if not tool_trace:
+            return EvidenceState(
+                ready=False,
+                reason="no_tool_result",
+                missing=[],
+            )
+        latest = tool_trace[-1]
+        if latest.status != "success":
+            return EvidenceState(
+                ready=False,
+                reason=latest.error_message or latest.status,
+                signals={"tool_status": latest.status, "business_status": latest.business_status},
+            )
+        return EvidenceState(
+            ready=True,
+            reason="tool_result_ready",
+            signals={
+                "tool_name": latest.tool_name,
+                "business_status": latest.business_status,
+                "source_count": len(sources),
+                "retrieval_results": retrieval_trace.results_count if retrieval_trace else None,
+            },
+        )
+
+    def _build_model_decision(
+        self,
+        route: RouteDecision | None,
+        stop_reason: str | None,
+        evidence: EvidenceState,
+        pending_action: PendingAction | None,
+    ) -> ModelDecision:
+        if pending_action is not None:
+            return ModelDecision(
+                should_finish=False,
+                next_action="ask_user",
+                confidence=route.confidence if route else 0.0,
+                reason="高风险工具动作等待用户确认。",
+                ask_user_question=pending_action.summary,
+                source="runtime",
+                task_stage="decide",
+            )
+        if route is not None and route.missing_slots:
+            return ModelDecision(
+                should_finish=False,
+                next_action="ask_user",
+                confidence=route.confidence,
+                reason="缺少必要业务槽位。",
+                missing_info=route.missing_slots,
+                ask_user_question=self._build_clarifying_question(route),
+                source="policy",
+                task_stage="understand",
+            )
+        return ModelDecision(
+            should_finish=stop_reason in {"completed", "answered_without_tool"},
+            next_action="finish" if stop_reason in {"completed", "answered_without_tool"} else "reject",
+            confidence=route.confidence if route else 0.0,
+            reason=evidence.reason,
+            source="runtime",
+            task_stage=self._task_stage(stop_reason),
+        )
+
+    def _extract_actions(self, tool_trace: list[ToolResult]):
+        actions = []
+        for result in tool_trace:
+            actions.extend(result.actions)
+            if result.envelope:
+                actions.extend(result.envelope.actions)
+        return actions
+
+    def _task_stage(self, stop_reason: str | None) -> str:
+        if stop_reason == "missing_slots":
+            return "understand"
+        if stop_reason == "waiting_confirmation":
+            return "decide"
+        if stop_reason in {"completed", "answered_without_tool"}:
+            return "done"
+        return "gather_evidence"
 
 
 class _RunContext:

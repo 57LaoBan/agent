@@ -1,55 +1,282 @@
 {
   "backend_cases": [
     {
-      "id": "knowledge_qa_live_model",
-      "message": "信易贷适合哪些企业？",
-      "expected_scene": "KNOWLEDGE_QA",
-      "expected_allowed_tools": ["rag_search"],
-      "expected_allowed_tool_categories": ["knowledge"],
-      "expected_tool": "rag_search",
-      "expected_tool_category": "knowledge",
-      "requires_live_model": true
-    },
-    {
-      "id": "credit_amount_tool",
+      "id": "rule_credit_amount_high_confidence",
+      "title": "规则命中：授信额度查询，高置信度，直接执行只读工具",
       "message": "杭州示例科技有限公司能贷多少钱？",
       "metadata": {
         "company_name": "杭州示例科技有限公司"
       },
+      "expected_route_mode": "rule",
       "expected_scene": "DATA_QUERY",
+      "expected_intent": "CREDIT_LIMIT_QUERY",
+      "expected_min_confidence": 0.9,
       "expected_allowed_tools": ["query_credit_amount"],
       "expected_allowed_tool_categories": ["data_query"],
       "expected_tool": "query_credit_amount",
       "expected_tool_category": "data_query",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "CREDIT_AMOUNT_FOUND",
       "expected_output": {
-        "credit_amount": "50万元"
+        "company_name": "杭州示例科技有限公司",
+        "credit_amount": "50万元",
+        "data_time": "2026-04-28"
       },
+      "expected_answer_contains": ["50万元"],
       "requires_live_model": true
     },
     {
-      "id": "application_confirmation",
+      "id": "rule_application_confirmation",
+      "title": "规则命中：贷款申请，高风险动作，停在执行前确认",
       "message": "我要申请小微税贷",
       "metadata": {
         "company_name": "杭州示例科技有限公司",
         "product_name": "小微税贷"
       },
+      "expected_route_mode": "rule",
       "expected_scene": "LOAN_APPLY",
+      "expected_intent": "CREATE_APPLICATION",
+      "expected_min_confidence": 0.85,
       "expected_allowed_tools": ["search_product", "create_application", "create_authorization_link"],
       "expected_allowed_tool_categories": ["knowledge", "application", "authorization"],
       "expected_pending_tool": "create_application",
       "expected_pending_tool_category": "application",
+      "expected_stop_reason": "waiting_confirmation",
+      "expected_business_status": "AUTH_REQUIRED",
+      "expected_pending_contains": ["确认创建贷款申请", "杭州示例科技有限公司", "小微税贷"],
       "requires_live_model": false
+    },
+    {
+      "id": "model_knowledge_qa_live_model",
+      "title": "模型或回退：政策知识问答，走 RAG 检索后回答",
+      "message": "信易贷适合哪些企业？",
+      "expected_route_mode": "model_or_default_knowledge",
+      "expected_scene": "KNOWLEDGE_QA",
+      "expected_allowed_tools": ["rag_search"],
+      "expected_allowed_tool_categories": ["knowledge"],
+      "expected_tool": "rag_search",
+      "expected_tool_category": "knowledge",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "RAG_RESULT_READY",
+      "requires_live_model": true
+    },
+    {
+      "id": "model_free_form_credit_eligibility",
+      "title": "模型识别：用户不按关键词提问，但语义是融资准入/额度类查询",
+      "message": "判断杭州示例科技有限公司是否符合融资准入，能不能获得平台贷款支持",
+      "metadata": {
+        "company_name": "杭州示例科技有限公司"
+      },
+      "expected_route_mode": "model",
+      "expected_scene": "DATA_QUERY",
+      "expected_allowed_tools": ["query_credit_amount"],
+      "expected_allowed_tool_categories": ["data_query"],
+      "expected_tool": "query_credit_amount",
+      "expected_tool_category": "data_query",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "CREDIT_AMOUNT_FOUND",
+      "expected_output": {
+        "credit_amount": "50万元"
+      },
+      "expected_answer_contains": ["50万元"],
+      "requires_live_model": true
+    }
+  ],
+  "controlled_route_cases": [
+    {
+      "id": "controlled_rule_credit_amount",
+      "title": "规则优先：额度关键词不调用模型识别，直接进入 DATA_QUERY",
+      "message": "杭州示例科技有限公司能贷多少钱？",
+      "metadata": {
+        "company_name": "杭州示例科技有限公司"
+      },
+      "model_route": {
+        "scene": "SMALLTALK",
+        "intent": "SMALLTALK",
+        "confidence": 0.99,
+        "route_reason": "如果规则没有优先级，模型会误判成闲聊。"
+      },
+      "expected_model_route_calls": 0,
+      "expected_scene": "DATA_QUERY",
+      "expected_intent": "CREDIT_LIMIT_QUERY",
+      "expected_allowed_tool_categories": ["data_query"],
+      "expected_tool": "query_credit_amount",
+      "expected_tool_category": "data_query",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "CREDIT_AMOUNT_FOUND",
+      "expected_answer_contains": ["50万元"]
+    },
+    {
+      "id": "controlled_model_free_form_data_query",
+      "title": "模型识别：无规则关键词，但模型判断为数据查询",
+      "message": "判断杭州示例科技有限公司是否符合融资准入",
+      "metadata": {
+        "company_name": "杭州示例科技有限公司"
+      },
+      "model_route": {
+        "scene": "DATA_QUERY",
+        "intent": "CREDIT_ELIGIBILITY_QUERY",
+        "confidence": 0.84,
+        "filled_slots": {
+          "company_name": "杭州示例科技有限公司"
+        },
+        "route_reason": "用户想判断企业是否能获得贷款支持，需要查询只读授信数据。",
+        "should_call_model": true,
+        "should_call_tool": true
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "DATA_QUERY",
+      "expected_intent": "CREDIT_ELIGIBILITY_QUERY",
+      "expected_allowed_tool_categories": ["data_query"],
+      "expected_tool": "query_credit_amount",
+      "expected_tool_category": "data_query",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "CREDIT_AMOUNT_FOUND",
+      "expected_answer_contains": ["50万元"]
+    },
+    {
+      "id": "controlled_low_confidence_clarify",
+      "title": "低置信度：不暴露工具，向用户追问确认意图",
+      "message": "那个东西能不能帮我弄一下？",
+      "model_route": {
+        "scene": "LOAN_APPLY",
+        "intent": "CREATE_APPLICATION",
+        "confidence": 0.42,
+        "route_reason": "用户表达模糊，无法确认是问答、额度查询还是发起申请。",
+        "should_call_model": true,
+        "should_call_tool": true
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "UNKNOWN",
+      "expected_intent": "LOW_CONFIDENCE",
+      "expected_missing_slots": ["user_intent"],
+      "expected_allowed_tool_categories": [],
+      "expected_stop_reason": "missing_slots",
+      "expected_business_status": "NO_TOOL_USED",
+      "expected_answer_contains": ["咨询政策", "查询授信额度", "发起贷款申请"]
+    },
+    {
+      "id": "controlled_missing_slots_clarify",
+      "title": "高置信度但槽位缺失：识别为申请意图，但先追问企业名称",
+      "message": "小微税贷这个产品给我走一下创建流程",
+      "model_route": {
+        "scene": "LOAN_APPLY",
+        "intent": "CREATE_APPLICATION",
+        "confidence": 0.91,
+        "filled_slots": {
+          "product_name": "小微税贷"
+        },
+        "route_reason": "用户明确要申请产品，但缺少企业名称。",
+        "should_call_model": true,
+        "should_call_tool": true
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "LOAN_APPLY",
+      "expected_intent": "CREATE_APPLICATION",
+      "expected_missing_slots": ["company_name"],
+      "expected_allowed_tool_categories": ["knowledge", "application", "authorization"],
+      "expected_stop_reason": "missing_slots",
+      "expected_business_status": "NO_TOOL_USED",
+      "expected_answer_contains": ["企业名称"]
+    },
+    {
+      "id": "controlled_application_confirmation",
+      "title": "高风险执行前确认：槽位齐全，生成 pending_action，不直接执行",
+      "message": "杭州示例科技有限公司的小微税贷这单，进入创建流程",
+      "model_route": {
+        "scene": "LOAN_APPLY",
+        "intent": "CREATE_APPLICATION",
+        "confidence": 0.93,
+        "filled_slots": {
+          "company_name": "杭州示例科技有限公司",
+          "product_name": "小微税贷"
+        },
+        "route_reason": "用户明确要求创建贷款申请。",
+        "should_call_model": true,
+        "should_call_tool": true
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "LOAN_APPLY",
+      "expected_intent": "CREATE_APPLICATION",
+      "expected_allowed_tool_categories": ["knowledge", "application", "authorization"],
+      "expected_pending_tool": "create_application",
+      "expected_pending_tool_category": "application",
+      "expected_stop_reason": "waiting_confirmation",
+      "expected_business_status": "AUTH_REQUIRED"
+    },
+    {
+      "id": "controlled_smalltalk_no_tool",
+      "title": "闲聊：模型识别为 SMALLTALK，不暴露工具",
+      "message": "你好，你能做什么？",
+      "model_route": {
+        "scene": "SMALLTALK",
+        "intent": "SMALLTALK",
+        "confidence": 0.89,
+        "route_reason": "用户在询问助手能力。",
+        "should_call_model": true,
+        "should_call_tool": false
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "SMALLTALK",
+      "expected_intent": "SMALLTALK",
+      "expected_allowed_tool_categories": [],
+      "expected_stop_reason": "answered_without_tool",
+      "expected_business_status": "NO_TOOL_USED",
+      "expected_answer_contains": ["信易贷"]
+    },
+    {
+      "id": "controlled_knowledge_rag_execution",
+      "title": "知识问答：模型识别为 KNOWLEDGE_QA，只暴露并执行 RAG 工具",
+      "message": "信易贷适合哪些企业？",
+      "model_route": {
+        "scene": "KNOWLEDGE_QA",
+        "intent": "POLICY_OR_PRODUCT_QA",
+        "confidence": 0.82,
+        "route_reason": "用户询问信易贷适用对象，需要检索政策知识。",
+        "should_call_model": true,
+        "should_call_tool": true
+      },
+      "expected_model_route_calls": 1,
+      "expected_scene": "KNOWLEDGE_QA",
+      "expected_intent": "POLICY_OR_PRODUCT_QA",
+      "expected_allowed_tool_categories": ["knowledge"],
+      "expected_tool": "rag_search",
+      "expected_tool_category": "knowledge",
+      "expected_stop_reason": "completed",
+      "expected_business_status": "RAG_RESULT_READY",
+      "expected_answer_contains": ["小微企业"]
     }
   ],
   "frontend_cases": [
     {
-      "id": "frontend_credit_amount_live_sse",
+      "id": "frontend_rule_credit_amount_live_sse",
+      "title": "页面输入：额度查询，检测窗口应显示 DATA_QUERY 和 query_credit_amount",
       "message": "杭州示例科技有限公司能贷多少钱？",
       "expected_scene": "DATA_QUERY",
       "expected_allowed_tools": ["query_credit_amount"],
       "expected_tool": "query_credit_amount",
       "expected_tool_category": "data_query",
       "expected_visible_text": "50万元"
+    },
+    {
+      "id": "frontend_application_confirmation_live_sse",
+      "title": "页面输入：申请贷款，聊天区应出现执行前确认卡片",
+      "message": "我要申请小微税贷",
+      "expected_scene": "LOAN_APPLY",
+      "expected_allowed_tools": ["create_application"],
+      "expected_tool": "create_application",
+      "expected_tool_category": "application",
+      "expected_visible_text": "确认创建贷款申请"
+    },
+    {
+      "id": "frontend_knowledge_rag_live_sse",
+      "title": "页面输入：政策问答，检测窗口应显示 KNOWLEDGE_QA 和 rag_search",
+      "message": "信易贷适合哪些企业？",
+      "expected_scene": "KNOWLEDGE_QA",
+      "expected_allowed_tools": ["rag_search"],
+      "expected_tool": "rag_search",
+      "expected_tool_category": "knowledge",
+      "expected_visible_text": "小微"
     }
   ]
 }

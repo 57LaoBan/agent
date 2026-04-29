@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from xinyidai_agent.protocol import ChatRequest, RouteDecision, ToolCall, ToolResult
+from xinyidai_agent.protocol import ChatRequest, RouteDecision, ToolCall, ToolResult, ToolResultEnvelope
 from xinyidai_agent.rag import EmptyRetriever, Retriever
-from xinyidai_agent.tools.base import ToolExecution, ToolSpec
+from xinyidai_agent.tools.base import SlotSpec, ToolExecution, ToolSpec
 
 
 class RagSearchTool:
@@ -22,6 +22,14 @@ class RagSearchTool:
             risk_level=self.risk_level,
             description=self.description,
             requires_confirmation=self.requires_confirmation,
+            input_slots=[
+                SlotSpec("query", "string", description="检索问题"),
+                SlotSpec("top_k", "integer", description="返回证据数量"),
+            ],
+            output_slots=[
+                SlotSpec("sources", "array", description="检索证据列表", allow_empty=True),
+                SlotSpec("retrieval_trace", "object", description="检索过程 trace"),
+            ],
             input_schema={
                 "query": "检索问题",
                 "top_k": "返回证据数量",
@@ -37,6 +45,9 @@ class RagSearchTool:
         query = str(tool_call.arguments.get("query") or request.user_message)
         top_k = int(tool_call.arguments.get("top_k") or request.top_k)
         sources, retrieval_trace = self._retriever.retrieve(query, top_k)
+        has_sources = bool(sources)
+        business_status = "RAG_RESULT_READY" if has_sources else "PARTIAL_DATA"
+        message = "知识库检索完成。" if has_sources else "知识库暂无可用证据。"
         result = ToolResult(
             tool_call_id=tool_call.tool_call_id,
             tool_name=tool_call.tool_name,
@@ -46,8 +57,29 @@ class RagSearchTool:
                 "sources": [source.model_dump() for source in sources],
                 "retrieval_trace": retrieval_trace.model_dump(),
             },
-            business_status="RAG_RESULT_READY",
+            envelope=ToolResultEnvelope(
+                success=True,
+                status=business_status,
+                code=0,
+                message=message,
+                data={
+                    "sources": [source.model_dump() for source in sources],
+                    "retrieval_trace": retrieval_trace.model_dump(),
+                },
+            ),
+            business_status=business_status,
+            code=0,
+            message=message,
             terminal=True,
-            model_observation="知识库检索已完成，回答必须基于证据；证据不足时说明缺口。",
+            model_observation=(
+                "知识库检索已完成，回答必须基于证据。"
+                if has_sources
+                else "知识库未返回证据，不能编造政策或准入结论。"
+            ),
+            user_visible_message=(
+                None
+                if has_sources
+                else "当前知识库还没有检索到可用证据，暂时不能确认该政策或准入规则。您可以换一种问法，或等真实 RAG 数据接入后再查询。"
+            ),
         )
         return ToolExecution(result=result, sources=sources, retrieval_trace=retrieval_trace)
