@@ -331,9 +331,13 @@ function RoutePanel({ route }: { route: RouteSnapshot | null }) {
     <div className="panel-stack">
       <Metric label="场景" value={route.scene} />
       <Metric label="意图" value={route.intent} />
+      <Metric label="模型原始意图" value={route.raw_intent ?? "无"} />
+      <Metric label="业务能力" value={route.capability_id ?? "无"} />
+      <Metric label="能力来源" value={route.capability_source ?? "unresolved"} />
       <Metric label="置信度" value={`${Math.round(route.confidence * 100)}%`} />
       <Metric label="风险等级" value={route.risk_level} />
       <Metric label="判断来源" value={route.route_source ?? "unknown"} />
+      <Metric label="需要确认" value={route.confirmation_required ? "是" : "否"} />
       <div className="tool-list">
         <span>允许工具</span>
         {route.allowed_tools.map((tool) => (

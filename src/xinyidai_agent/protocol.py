@@ -174,6 +174,10 @@ class RouteDecision(BaseModel):
 
     scene: RouteScene
     intent: str
+    raw_intent: str | None = None
+    capability_id: str | None = None
+    capability_source: str = "unresolved"
+    confirmation_required: bool = False
     confidence: float
     required_slots: list[str] = Field(default_factory=list)
     filled_slots: dict[str, Any] = Field(default_factory=dict)

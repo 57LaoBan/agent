@@ -73,7 +73,10 @@ class RouterContractTest(unittest.TestCase):
         route = router.route(ChatRequest(user_message="判断杭州示例科技有限公司是否符合融资准入"))
 
         self.assertEqual(route.scene, "DATA_QUERY")
-        self.assertEqual(route.intent, "CREDIT_ELIGIBILITY_QUERY")
+        self.assertEqual(route.intent, "CREDIT_LIMIT_QUERY")
+        self.assertEqual(route.raw_intent, "CREDIT_ELIGIBILITY_QUERY")
+        self.assertEqual(route.capability_id, "credit.limit.read")
+        self.assertEqual(route.capability_source, "resolved")
         self.assertEqual(route.filled_slots["company_name"], "杭州示例科技有限公司")
         self.assertEqual(route.allowed_tool_categories, ["data_query"])
         self.assertEqual(route.allowed_tools, ["query_credit_amount"])
@@ -101,10 +104,37 @@ class RouterContractTest(unittest.TestCase):
         route = router.route(ChatRequest(user_message="信易贷适合哪些企业？"))
 
         self.assertEqual(route.scene, "KNOWLEDGE_QA")
-        self.assertEqual(route.intent, "query_eligibility_criteria")
+        self.assertEqual(route.intent, "POLICY_OR_PRODUCT_QA")
+        self.assertEqual(route.raw_intent, "query_eligibility_criteria")
+        self.assertEqual(route.capability_id, "knowledge.policy.read")
+        self.assertEqual(route.capability_source, "resolved")
         self.assertEqual(route.route_source, "model")
         self.assertEqual(route.allowed_tools, ["rag_search"])
         self.assertEqual(route.allowed_tool_categories, ["knowledge"])
+
+    def test_authorization_scene_resolves_link_create_capability(self) -> None:
+        model = JsonRouterModel(
+            """
+            {
+              "scene": "AUTHORIZATION",
+              "raw_intent": "generate_company_authorization_link",
+              "confidence": 0.92,
+              "filled_slots": {"company_name": "杭州示例科技有限公司"},
+              "route_reason": "用户想生成企业授权链接。"
+            }
+            """
+        )
+        router = ControlledIntentRouter(model=model)
+
+        route = router.route(ChatRequest(user_message="帮我生成杭州示例科技有限公司的授权链接"))
+
+        self.assertEqual(route.scene, "AUTHORIZATION")
+        self.assertEqual(route.intent, "CREATE_AUTHORIZATION_LINK")
+        self.assertEqual(route.raw_intent, "generate_company_authorization_link")
+        self.assertEqual(route.capability_id, "authorization.link.create")
+        self.assertTrue(route.confirmation_required)
+        self.assertEqual(route.allowed_tools, ["create_authorization_link"])
+        self.assertEqual(route.allowed_tool_categories, ["authorization"])
 
     def test_model_route_normalizes_empty_filled_slots(self) -> None:
         model = JsonRouterModel(

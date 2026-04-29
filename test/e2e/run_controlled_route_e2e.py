@@ -92,6 +92,10 @@ class ControlledRouteE2ETest(unittest.TestCase):
                 route = response.route_decision
                 self.assertEqual(route.scene, case["expected_scene"])
                 self.assertEqual(route.intent, case["expected_intent"])
+                if expected_raw_intent := case.get("expected_raw_intent"):
+                    self.assertEqual(route.raw_intent, expected_raw_intent)
+                if expected_capability_id := case.get("expected_capability_id"):
+                    self.assertEqual(route.capability_id, expected_capability_id)
                 self.assertEqual(route.allowed_tool_categories, case["expected_allowed_tool_categories"])
                 self.assertEqual(route.missing_slots, case.get("expected_missing_slots", []))
                 self.assertEqual(response.stop_reason, case["expected_stop_reason"])

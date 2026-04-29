@@ -21,6 +21,7 @@ class RuleBasedRouter:
             return RouteDecision(
                 scene="LOAN_APPLY",
                 intent="CREATE_APPLICATION",
+                raw_intent="CREATE_APPLICATION",
                 confidence=0.88,
                 required_slots=["company_name", "product_name"],
                 filled_slots={
@@ -40,6 +41,7 @@ class RuleBasedRouter:
             return RouteDecision(
                 scene="DATA_QUERY",
                 intent="CREDIT_LIMIT_QUERY",
+                raw_intent="CREDIT_LIMIT_QUERY",
                 confidence=0.91,
                 required_slots=["company_name"],
                 filled_slots={"company_name": request.metadata.get("company_name", "杭州示例科技有限公司")},
@@ -64,6 +66,7 @@ def default_knowledge_route(request: ChatRequest, reason: str = "未命中强规
     return RouteDecision(
         scene="KNOWLEDGE_QA",
         intent="POLICY_OR_PRODUCT_QA",
+        raw_intent="POLICY_OR_PRODUCT_QA",
         confidence=0.8,
         allowed_tools=["rag_search"],
         allowed_tool_categories=["knowledge"],
@@ -79,6 +82,7 @@ def unknown_route(request: ChatRequest, reason: str, confidence: float = 0.0) ->
     return RouteDecision(
         scene="UNKNOWN",
         intent="UNKNOWN",
+        raw_intent="UNKNOWN",
         confidence=confidence,
         missing_slots=["user_intent"],
         allowed_tools=[],

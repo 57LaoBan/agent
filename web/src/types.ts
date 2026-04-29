@@ -44,6 +44,10 @@ export type PendingAction = {
 export type RouteSnapshot = {
   scene: string;
   intent: string;
+  raw_intent?: string | null;
+  capability_id?: string | null;
+  capability_source?: string;
+  confirmation_required?: boolean;
   confidence: number;
   allowed_tools: string[];
   allowed_tool_categories: string[];

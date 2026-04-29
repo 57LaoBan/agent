@@ -21,6 +21,7 @@ ChatRequest
 - `protocol` 只定义稳定协议模型。
 - `config` 只负责配置读取，不创建业务对象。
 - `llm` 只负责模型调用，不知道信易贷业务。
+- `capabilities` 定义后端允许的业务能力池，能力负责派生标准意图、工具池、槽位、风险等级和确认策略。
 - `router` 负责业务意图识别，采用规则优先、模型结构化识别、策略校验三层设计。
 - `rag` 只负责检索结果和 trace，不生成最终回答。
 - `tools` 负责把 RAG、mock 数据接口、申请动作等能力包装成 Agent 可调用工具，并维护工具分类、风险等级和工具描述。
@@ -39,9 +40,30 @@ ChatRequest
 - `AgentAction`：面向前端的动作描述，支持打开链接、小程序、业务动作、联系客服，并携带风险、确认和审计信息。
 - `PerformanceSummary`：本轮耗时摘要，供检测窗口和后续性能分析使用。
 
+## 业务能力与工具权限
+
+工具权限不再由模型直接决定，而是由后端能力策略派生。模型只提供 `scene`、`raw_intent`、槽位和置信度等语义信号，`RoutePolicy` 通过 `CapabilityResolver` 在预定义能力池中选择 `capability_id`，再生成标准 `intent`、`allowed_tools`、`risk_level` 和 `confirmation_required`。
+
+```text
+模型候选路由
+  -> CapabilityResolver 选择后端能力
+  -> CapabilityPolicy 派生工具池和风险策略
+  -> ToolRegistry 执行前做工具名、分类、输入槽位和输出槽位校验
+```
+
+当前能力池示例：
+
+- `knowledge.policy.read`：政策、产品、准入规则知识问答，允许 `rag_search`。
+- `credit.limit.read`：授信额度只读查询，允许 `query_credit_amount`。
+- `authorization.link.create`：生成企业授权链接，风险等级 `link_create`，需要确认。
+- `application.draft.create`：创建贷款申请草稿，风险等级 `state_create`，需要确认。
+- `application.status.read`：申请状态只读查询。
+- `smalltalk.respond`：闲聊和助手能力说明，不开放业务工具。
+- `unknown.clarify`：无法确认意图时追问。
+
 ## 工具分类
 
-工具注册表按分类暴露工具，路由结果先决定本轮允许的分类，再由模型或规则在该分类下选择具体工具。
+工具注册表按分类维护工具，能力策略先决定本轮允许的分类和具体工具，模型不能直接扩大工具池。
 
 - `knowledge`：政策、产品、准入规则等知识检索，例如 `rag_search`。
 - `data_query`：只读数值查询，例如 `query_credit_amount`。
@@ -61,8 +83,8 @@ ChatRequest
 ```text
 用户输入
   -> RuleBasedRouter 处理申请、额度等强先验表达
-  -> ModelIntentRouter 处理规则未覆盖的自由表达，要求模型只返回 JSON
-  -> RoutePolicy 检查置信度、必填槽位、工具分类和风险等级
+  -> ModelIntentRouter 处理规则未覆盖的自由表达，要求模型只返回 JSON 语义信号
+  -> RoutePolicy 检查置信度、解析 capability、校验必填槽位和风险等级
   -> RouteDecision 交给 runtime 继续规划工具或追问
 ```
 
@@ -70,6 +92,8 @@ ChatRequest
 
 - 低于置信度阈值的路由会转为 `UNKNOWN` 并进入追问。
 - 必填槽位缺失时不执行工具，先进入 `CLARIFYING`。
+- 模型原始意图保留在 `raw_intent`，标准意图由 capability 派生到 `intent`。
+- 模型输出的 `allowed_tools`、`allowed_tool_categories`、`risk_level` 会被忽略，工具池由 capability 派生。
 - 创建申请、授权链接、最终提交等状态类动作需要通过 `PendingAction` 做执行前确认。
 
 ## 事件流
