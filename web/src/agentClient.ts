@@ -10,7 +10,7 @@ export function getAgentRuntimeLabel() {
   return useMockAgent ? "Mock Event Stream" : `Live SSE ${apiBaseUrl}`;
 }
 
-export async function runAgentTurn(message: string, emit: Emit) {
+export async function runAgentTurn(message: string, sessionId: string | null, emit: Emit) {
   if (useMockAgent) {
     await runMockTurn(message, emit);
     return;
@@ -23,6 +23,7 @@ export async function runAgentTurn(message: string, emit: Emit) {
     },
     body: JSON.stringify({
       user_message: message,
+      session_id: sessionId,
       top_k: 5,
     }),
   });

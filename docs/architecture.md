@@ -21,6 +21,8 @@ ChatRequest
 - `protocol` 只定义稳定协议模型。
 - `config` 只负责配置读取，不创建业务对象。
 - `llm` 只负责模型调用，不知道信易贷业务。
+- `memory` 负责结构化短期会话状态，不直接猜测用户语义。
+- `system_tools` 负责 Agent 自身运行所需工具，例如模型可见的 `update_session_state`。
 - `capabilities` 定义后端允许的业务能力池，能力负责派生标准意图、工具池、槽位、风险等级和确认策略。
 - `router` 负责业务意图识别，采用规则优先、模型结构化识别、策略校验三层设计。
 - `rag` 只负责检索结果和 trace，不生成最终回答。
@@ -75,6 +77,25 @@ ChatRequest
 注册表执行工具前会检查工具名和工具分类，当前路由未允许的工具会返回 `blocked`，避免模型越权调用。
 
 工具还会声明输入槽位和输出槽位，并为每个槽位声明类型，例如 `query_credit_amount` 必须接收字符串类型的 `company_name`、`query`，并返回字符串类型的 `company_name`、`credit_amount`、`data_time`。注册表执行工具前校验输入槽位的字段名和类型，执行工具后校验输出槽位的字段名和类型，缺失或类型不匹配会被拦截或标记为失败，避免基于错误业务数据生成回答。
+
+## 短期业务记忆
+
+短期记忆分为模型语义判断和系统工具落库两步。
+
+```text
+session_loaded
+  -> 模型可见系统工具 update_session_state
+  -> system_tool_result
+  -> MemoryManager enrich_request
+  -> 业务路由和业务工具
+  -> session_updated
+```
+
+- 模型负责判断用户是否在切换企业、补充企业名、切换产品或清理旧结果。
+- `update_session_state` 是系统工具，不是业务工具；它允许模型写入 session，但只能通过强 schema 写入白名单槽位。
+- 工具校验 `company_name`、`product_name`、`application_id` 等字段类型，禁止写入未知槽位。
+- 当模型将 `company_name` 覆盖为新企业时，系统工具会清理旧企业的 `last_credit_amount`，避免上一家企业的额度污染下一轮回答。
+- `MemoryManager` 不再用正则猜测用户输入含义，只负责读取、保存、注入已确认 session 状态。
 
 ## 意图识别
 

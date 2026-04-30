@@ -7,9 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SourceType = Literal["policy", "product", "rule", "web", "internal", "unknown"]
 EventVisibility = Literal["user", "diagnostic"]
-PROTOCOL_VERSION = "2026-04-29"
+PROTOCOL_VERSION = "2026-04-30"
 AgentEventType = Literal[
     "turn_started",
+    "session_loaded",
+    "system_tool_started",
+    "system_tool_result",
+    "session_updated",
     "state_changed",
     "route_started",
     "route_decision",
@@ -67,6 +71,7 @@ BusinessStatus = Literal[
 ActionType = Literal["business_action", "open_url", "open_miniprogram", "contact_service"]
 NextStepType = Literal["none", "suggest_tool", "ask_user", "stop_with_action"]
 DecisionAction = Literal["finish", "continue_tool", "ask_user", "reject"]
+ConfirmationStatus = Literal["none", "waiting", "confirmed", "cancelled"]
 
 
 class AuditInfo(BaseModel):
@@ -237,6 +242,36 @@ class PendingAction(BaseModel):
     details: list[dict[str, str]] = Field(default_factory=list)
 
 
+class SessionToolResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tool_name: str
+    business_status: str | None = None
+    output: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+
+
+class SessionStateSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    active_scene: RouteScene | None = None
+    active_capability_id: str | None = None
+    confirmed_slots: dict[str, Any] = Field(default_factory=dict)
+    pending_slots: dict[str, Any] = Field(default_factory=dict)
+    awaiting_slots: list[str] = Field(default_factory=list)
+    last_route: RouteDecision | None = None
+    last_tool_results: list[SessionToolResult] = Field(default_factory=list)
+    pending_action: PendingAction | None = None
+    confirmation_status: ConfirmationStatus = "none"
+    selected_company_name: str | None = None
+    selected_product_name: str | None = None
+    last_credit_amount: dict[str, Any] | None = None
+    short_summary: str = ""
+    turn_count: int = 0
+    updated_at: str
+
+
 class ToolResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -310,6 +345,7 @@ class ChatResponse(BaseModel):
     retrieval_trace: RetrievalTrace | None = None
     tool_trace: list[ToolResult] = Field(default_factory=list)
     pending_action: PendingAction | None = None
+    session_state: SessionStateSnapshot | None = None
     evidence: EvidenceState = Field(default_factory=EvidenceState)
     model_decision: ModelDecision = Field(default_factory=ModelDecision)
     performance: PerformanceSummary = Field(default_factory=PerformanceSummary)

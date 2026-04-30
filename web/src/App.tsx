@@ -20,7 +20,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getAgentRuntimeLabel, runAgentTurn } from "./agentClient";
 import { confirmMockAction } from "./mockAgent";
-import type { AgentEvent, ChatMessage, PendingAction, RouteSnapshot, ToolSnapshot } from "./types";
+import type { AgentEvent, ChatMessage, PendingAction, RouteSnapshot, SessionStateSnapshot, ToolSnapshot } from "./types";
 
 const presets = ["我能贷多少钱？", "我要申请小微税贷", "信易贷适合哪些企业？"];
 const tabs = ["意图", "工具", "状态", "事件"] as const;
@@ -37,6 +37,8 @@ export function App() {
     },
   ]);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionState, setSessionState] = useState<SessionStateSnapshot | null>(null);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("意图");
 
@@ -112,6 +114,12 @@ export function App() {
   const appendEvent = (event: AgentEvent) => {
     setEvents((current) => [...current, event]);
 
+    if (event.event_type === "session_loaded" || event.event_type === "session_updated") {
+      const snapshot = event.payload as unknown as SessionStateSnapshot;
+      setSessionId(snapshot.session_id);
+      setSessionState(snapshot);
+    }
+
     if (event.visibility !== "user") return;
 
     if (event.event_type === "assistant_delta") {
@@ -154,7 +162,7 @@ export function App() {
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", content: text }]);
 
     try {
-      await runAgentTurn(text, appendEvent);
+      await runAgentTurn(text, sessionId, appendEvent);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -307,7 +315,7 @@ export function App() {
           <div className="diagnostic-content">
             {activeTab === "意图" && <RoutePanel route={route} />}
             {activeTab === "工具" && <ToolPanel tools={tools} />}
-            {activeTab === "状态" && <StatePanel states={states} />}
+            {activeTab === "状态" && <StatePanel sessionState={sessionState} states={states} />}
             {activeTab === "事件" && <EventPanel events={events} />}
           </div>
         </aside>
@@ -395,17 +403,34 @@ function ToolPanel({ tools }: { tools: ToolSnapshot[] }) {
   );
 }
 
-function StatePanel({ states }: { states: string[] }) {
-  if (states.length === 0) return <EmptyState icon={<Gauge size={20} />} text="暂无状态迁移" />;
+function StatePanel({ sessionState, states }: { sessionState: SessionStateSnapshot | null; states: string[] }) {
+  if (states.length === 0 && !sessionState) return <EmptyState icon={<Gauge size={20} />} text="暂无状态迁移" />;
 
   return (
-    <div className="state-list">
-      {states.map((state, index) => (
-        <div className="state-item" key={`${state}-${index}`}>
-          <span>{index + 1}</span>
-          <strong>{state}</strong>
-        </div>
-      ))}
+    <div className="panel-stack">
+      {sessionState && (
+        <>
+          <Metric label="Session" value={sessionState.session_id} />
+          <Metric label="业务场景" value={sessionState.active_scene ?? "无"} />
+          <Metric label="业务能力" value={sessionState.active_capability_id ?? "无"} />
+          <Metric label="确认状态" value={sessionState.confirmation_status} />
+          <Metric label="待补字段" value={sessionState.awaiting_slots.join(", ") || "无"} />
+          <Metric label="会话轮次" value={String(sessionState.turn_count)} />
+          <div className="tool-list">
+            <span>已确认槽位</span>
+            <pre>{JSON.stringify(sessionState.confirmed_slots, null, 2)}</pre>
+          </div>
+          {sessionState.short_summary && <p className="reason">{sessionState.short_summary}</p>}
+        </>
+      )}
+      <div className="state-list">
+        {states.map((state, index) => (
+          <div className="state-item" key={`${state}-${index}`}>
+            <span>{index + 1}</span>
+            <strong>{state}</strong>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

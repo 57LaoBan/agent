@@ -6,6 +6,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from xinyidai_agent.llm import ChatModel
+from xinyidai_agent.memory import MemoryManager
 from xinyidai_agent.protocol import (
     AgentEvent,
     AgentEventType,
@@ -21,12 +22,14 @@ from xinyidai_agent.protocol import (
     PerformanceStage,
     RetrievalTrace,
     RouteDecision,
+    SessionStateSnapshot,
     SourceDocument,
     StateTransition,
     ToolCall,
     ToolResult,
 )
 from xinyidai_agent.router import ControlledIntentRouter, IntentRouter
+from xinyidai_agent.system_tools import SessionMemorySystemTool
 from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry
 
 
@@ -42,16 +45,53 @@ class ControlledAgentLoop:
         model: ChatModel,
         router: IntentRouter | None = None,
         tool_registry: ToolRegistry | None = None,
+        memory_manager: MemoryManager | None = None,
         max_steps: int = 3,
     ) -> None:
         self._model = model
         self._router = router or ControlledIntentRouter(model=model)
         self._tool_registry = tool_registry or default_tool_registry()
+        self._memory = memory_manager or MemoryManager()
+        self._session_memory_tool = SessionMemorySystemTool()
         self._max_steps = max_steps
 
     def run(self, request: ChatRequest) -> Iterator[AgentEvent]:
         context = _RunContext(turn_id=str(uuid4()))
+        session_state = self._memory.load(request.session_id)
         yield context.event("turn_started", "diagnostic", {"user_message": request.user_message})
+        yield context.event("session_loaded", "diagnostic", session_state.model_dump())
+        memory_execution = self._session_memory_tool.plan_and_execute(
+            self._model,
+            request,
+            session_state,
+        )
+        if memory_execution.status != "noop":
+            yield context.event(
+                "system_tool_started",
+                "diagnostic",
+                {
+                    "tool_name": memory_execution.tool_name,
+                    "arguments": memory_execution.arguments,
+                    "visibility": self._session_memory_tool.visibility,
+                },
+            )
+            yield context.event(
+                "system_tool_result",
+                "diagnostic",
+                {
+                    "tool_name": memory_execution.tool_name,
+                    "status": memory_execution.status,
+                    "applied_operations": memory_execution.applied_operations,
+                    "rejected_operations": memory_execution.rejected_operations,
+                    "error": memory_execution.error,
+                },
+            )
+        if memory_execution.status == "success":
+            session_state = memory_execution.state
+            self._memory.save(session_state)
+            yield context.event("session_updated", "diagnostic", session_state.model_dump())
+
+        request = self._memory.enrich_request(request, session_state)
         yield context.transition("LISTENING", "ROUTING", "开始识别业务意图")
         yield context.event("route_started", "diagnostic", {"strategy": "rule_first_model_then_policy"})
 
@@ -63,6 +103,13 @@ class ControlledAgentLoop:
             question = self._build_clarifying_question(route)
             yield from context.user_answer_events(question)
             yield context.transition("CLARIFYING", "FINISHED", "等待用户补充信息")
+            session_state = self._memory.update(
+                session_state,
+                request,
+                route=route,
+                stop_reason="missing_slots",
+            )
+            yield context.event("session_updated", "diagnostic", session_state.model_dump())
             yield context.event("turn_finished", "diagnostic", {"stop_reason": "missing_slots"})
             return
 
@@ -75,6 +122,13 @@ class ControlledAgentLoop:
                 answer = self._answer_without_tool(request, route)
                 yield from context.user_answer_events(answer)
                 yield context.transition("ANSWERING", "FINISHED", "已生成回答")
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="answered_without_tool",
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event("turn_finished", "diagnostic", {"stop_reason": "answered_without_tool"})
                 return
 
@@ -88,6 +142,14 @@ class ControlledAgentLoop:
                     "user",
                     {"pending_action": pending_action.model_dump()},
                 )
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    pending_action=pending_action,
+                    stop_reason="waiting_confirmation",
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event("turn_finished", "diagnostic", {"stop_reason": "waiting_confirmation"})
                 return
 
@@ -101,6 +163,14 @@ class ControlledAgentLoop:
                 yield context.transition("OBSERVING_RESULT", "ANSWERING", "工具失败，生成可理解提示")
                 yield from context.user_answer_events(tool_result.user_visible_message or "工具调用失败，请稍后重试。")
                 yield context.transition("ANSWERING", "FINISHED", "失败提示已返回")
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    tool_result=tool_result,
+                    stop_reason="tool_failed",
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event("turn_finished", "diagnostic", {"stop_reason": "tool_failed"})
                 return
 
@@ -109,6 +179,14 @@ class ControlledAgentLoop:
                 answer = self._answer_from_terminal_tool(request, route, tool_result, sources)
                 yield from context.user_answer_events(answer)
                 yield context.transition("ANSWERING", "FINISHED", "已基于工具结果生成回答")
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    tool_result=tool_result,
+                    stop_reason="completed",
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event(
                     "turn_finished",
                     "diagnostic",
@@ -123,6 +201,13 @@ class ControlledAgentLoop:
 
         yield context.transition("ROUTING", "REJECTED", "达到最大循环步数")
         yield from context.user_answer_events("本轮未能在安全步数内完成，请补充信息或稍后重试。")
+        session_state = self._memory.update(
+            session_state,
+            request,
+            route=route,
+            stop_reason="max_steps",
+        )
+        yield context.event("session_updated", "diagnostic", session_state.model_dump())
         yield context.event("turn_finished", "diagnostic", {"stop_reason": "max_steps"})
 
     def answer(self, request: ChatRequest) -> ChatResponse:
@@ -133,6 +218,7 @@ class ControlledAgentLoop:
         route_decision = self._extract_route(events)
         tool_trace = self._extract_tool_trace(events)
         pending_action = self._extract_pending_action(events)
+        session_state = self._extract_session_state(events)
         retrieval_trace = self._extract_retrieval_trace(events)
         sources = self._extract_sources(tool_trace)
         stop_reason = self._extract_stop_reason(events)
@@ -152,6 +238,7 @@ class ControlledAgentLoop:
             retrieval_trace=retrieval_trace,
             tool_trace=tool_trace,
             pending_action=pending_action,
+            session_state=session_state,
             evidence=evidence,
             model_decision=model_decision,
             performance=PerformanceSummary(
@@ -173,6 +260,7 @@ class ControlledAgentLoop:
                         "mode": "single_agent_controlled_tool_loop",
                         "max_steps": self._max_steps,
                         "event_count": len(events),
+                        "session_id": session_state.session_id if session_state else None,
                         "tool_calls": len(tool_trace),
                         "stop_reason": stop_reason,
                         "business_status": business_status,
@@ -363,6 +451,12 @@ class ControlledAgentLoop:
                 value = event.payload.get("pending_action")
                 if value:
                     return PendingAction.model_validate(value)
+        return None
+
+    def _extract_session_state(self, events: list[AgentEvent]) -> SessionStateSnapshot | None:
+        for event in reversed(events):
+            if event.event_type in {"session_updated", "session_loaded"}:
+                return SessionStateSnapshot.model_validate(event.payload)
         return None
 
     def _extract_retrieval_trace(self, events: list[AgentEvent]) -> RetrievalTrace | None:

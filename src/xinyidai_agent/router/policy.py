@@ -41,9 +41,7 @@ class RoutePolicy:
             **route.filled_slots,
             **self._metadata_slots(request, capability.required_slots),
         }
-        missing_slots = [
-            slot for slot in capability.required_slots if not filled_slots.get(slot)
-        ]
+        missing_slots = self._missing_slots(route, capability.required_slots, filled_slots)
 
         if capability.capability_id == "unknown.clarify":
             return self._clarify(
@@ -64,7 +62,7 @@ class RoutePolicy:
             confidence=route.confidence,
             required_slots=capability.required_slots,
             filled_slots=filled_slots,
-            missing_slots=route.missing_slots or missing_slots,
+            missing_slots=missing_slots,
             allowed_tools=capability.allowed_tools,
             allowed_tool_categories=capability.allowed_tool_categories,
             risk_level=capability.risk_level,
@@ -106,3 +104,18 @@ class RoutePolicy:
             for slot in slots
             if slot in request.metadata and request.metadata[slot]
         }
+
+    def _missing_slots(
+        self,
+        route: RouteDecision,
+        required_slots: list[str],
+        filled_slots: dict[str, Any],
+    ) -> list[str]:
+        missing: list[str] = []
+        for slot in required_slots:
+            if not filled_slots.get(slot):
+                missing.append(slot)
+        for slot in route.missing_slots:
+            if slot not in required_slots and not filled_slots.get(slot):
+                missing.append(slot)
+        return missing

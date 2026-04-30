@@ -10,6 +10,10 @@ class RuleBasedRouter:
 
     def match(self, request: ChatRequest) -> RouteDecision | None:
         message = request.user_message.strip()
+        resume_route = self._resume_route(request)
+        if resume_route is not None:
+            return resume_route
+
         if self._is_low_information(message):
             return unknown_route(
                 request,
@@ -18,16 +22,20 @@ class RuleBasedRouter:
             )
 
         if any(keyword in message for keyword in ("申请", "办理", "贷款链接")):
+            filled_slots = {
+                slot: request.metadata[slot]
+                for slot in ("company_name", "product_name")
+                if request.metadata.get(slot)
+            }
+            if "product_name" not in filled_slots and "小微税贷" in message:
+                filled_slots["product_name"] = "小微税贷"
             return RouteDecision(
                 scene="LOAN_APPLY",
                 intent="CREATE_APPLICATION",
                 raw_intent="CREATE_APPLICATION",
                 confidence=0.88,
                 required_slots=["company_name", "product_name"],
-                filled_slots={
-                    "company_name": request.metadata.get("company_name", "杭州示例科技有限公司"),
-                    "product_name": request.metadata.get("product_name", "小微税贷"),
-                },
+                filled_slots=filled_slots,
                 allowed_tools=["search_product", "create_application", "create_authorization_link"],
                 allowed_tool_categories=["knowledge", "application", "authorization"],
                 risk_level="state_create",
@@ -38,13 +46,16 @@ class RuleBasedRouter:
             )
 
         if any(keyword in message for keyword in ("额度", "能贷", "多少钱", "授信")):
+            filled_slots = {}
+            if request.metadata.get("company_name"):
+                filled_slots["company_name"] = request.metadata["company_name"]
             return RouteDecision(
                 scene="DATA_QUERY",
                 intent="CREDIT_LIMIT_QUERY",
                 raw_intent="CREDIT_LIMIT_QUERY",
                 confidence=0.91,
                 required_slots=["company_name"],
-                filled_slots={"company_name": request.metadata.get("company_name", "杭州示例科技有限公司")},
+                filled_slots=filled_slots,
                 allowed_tools=["query_credit_amount"],
                 allowed_tool_categories=["data_query"],
                 risk_level="read_only",
@@ -60,6 +71,25 @@ class RuleBasedRouter:
         if len(message) < 2:
             return True
         return re.fullmatch(r"[\W\d_]+", message, flags=re.UNICODE) is not None
+
+    def _resume_route(self, request: ChatRequest) -> RouteDecision | None:
+        raw_route = request.metadata.get("_session_resume_route")
+        if not isinstance(raw_route, dict):
+            return None
+
+        payload = dict(raw_route)
+        filled_slots = dict(payload.get("filled_slots") or {})
+        required_slots = list(payload.get("required_slots") or [])
+        missing_slots = list(payload.get("missing_slots") or [])
+        for slot in [*required_slots, *missing_slots]:
+            if request.metadata.get(slot):
+                filled_slots[slot] = request.metadata[slot]
+
+        payload["filled_slots"] = filled_slots
+        payload["missing_slots"] = []
+        payload["route_source"] = "session_memory"
+        payload["route_reason"] = "根据上一轮待补槽位恢复业务流程。"
+        return RouteDecision.model_validate(payload)
 
 
 def default_knowledge_route(request: ChatRequest, reason: str = "未命中强规则，回退到知识问答。") -> RouteDecision:

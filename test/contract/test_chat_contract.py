@@ -124,25 +124,30 @@ class ChatContractTest(unittest.TestCase):
         self.assertTrue(payload["evidence"]["ready"])
         self.assertEqual(payload["model_decision"]["next_action"], "finish")
         self.assertGreaterEqual(payload["performance"]["total_ms"], 0)
-        self.assertEqual(payload["protocol_version"], "2026-04-29")
+        self.assertEqual(payload["protocol_version"], "2026-04-30")
         self.assertEqual(payload["diagnostics"][0]["detail"]["mode"], "single_agent_controlled_tool_loop")
 
     def test_application_request_returns_pending_action_before_tool_execution(self) -> None:
         loop = build_test_loop()
         response = loop.answer(ChatRequest(user_message="我要申请小微税贷"))
 
-        self.assertEqual(response.answer, "")
-        self.assertIsNotNone(response.pending_action)
-        self.assertEqual(response.pending_action.tool_call.tool_name, "create_application")
-        self.assertEqual(response.pending_action.tool_call.tool_category, "application")
-        self.assertTrue(response.pending_action.tool_call.confirmation_required)
+        self.assertIn("企业名称", response.answer)
+        self.assertIsNone(response.pending_action)
         self.assertEqual(response.route_decision.scene, "LOAN_APPLY")
-        self.assertEqual(response.business_status, "AUTH_REQUIRED")
+        self.assertEqual(response.route_decision.missing_slots, ["company_name"])
+        self.assertEqual(response.business_status, "NO_TOOL_USED")
         self.assertEqual(response.model_decision.next_action, "ask_user")
 
     def test_run_emits_ordered_agent_events(self) -> None:
         loop = build_test_loop()
-        events = list(loop.run(ChatRequest(user_message="我能贷多少钱？")))
+        events = list(
+            loop.run(
+                ChatRequest(
+                    user_message="我能贷多少钱？",
+                    metadata={"company_name": "杭州示例科技有限公司"},
+                )
+            )
+        )
 
         self.assertEqual(events[0].event_type, "turn_started")
         self.assertEqual([event.sequence for event in events], list(range(1, len(events) + 1)))

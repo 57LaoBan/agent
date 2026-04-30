@@ -2,6 +2,10 @@ export type EventVisibility = "user" | "diagnostic";
 
 export type AgentEventType =
   | "turn_started"
+  | "session_loaded"
+  | "system_tool_started"
+  | "system_tool_result"
+  | "session_updated"
   | "state_changed"
   | "route_started"
   | "route_decision"
@@ -66,4 +70,20 @@ export type ToolSnapshot = {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   phases: string[];
+};
+
+export type SessionStateSnapshot = {
+  session_id: string;
+  active_scene?: string | null;
+  active_capability_id?: string | null;
+  confirmed_slots: Record<string, unknown>;
+  pending_slots: Record<string, unknown>;
+  awaiting_slots: string[];
+  selected_company_name?: string | null;
+  selected_product_name?: string | null;
+  last_credit_amount?: Record<string, unknown> | null;
+  confirmation_status: "none" | "waiting" | "confirmed" | "cancelled";
+  short_summary: string;
+  turn_count: number;
+  updated_at: string;
 };
