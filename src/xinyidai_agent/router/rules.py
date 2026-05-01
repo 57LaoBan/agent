@@ -6,7 +6,7 @@ from xinyidai_agent.protocol import ChatRequest, RouteDecision
 
 
 class RuleBasedRouter:
-    """规则优先路由器，处理确定性强的业务表达。"""
+    """系统级本地守卫，只处理无业务语义输入和会话续接。"""
 
     def match(self, request: ChatRequest) -> RouteDecision | None:
         message = request.user_message.strip()
@@ -19,50 +19,6 @@ class RuleBasedRouter:
                 request,
                 reason="用户输入缺少可识别的业务语义，直接追问确认意图。",
                 confidence=0.2,
-            )
-
-        if any(keyword in message for keyword in ("申请", "办理", "贷款链接")):
-            filled_slots = {
-                slot: request.metadata[slot]
-                for slot in ("company_name", "product_name")
-                if request.metadata.get(slot)
-            }
-            if "product_name" not in filled_slots and "小微税贷" in message:
-                filled_slots["product_name"] = "小微税贷"
-            return RouteDecision(
-                scene="LOAN_APPLY",
-                intent="CREATE_APPLICATION",
-                raw_intent="CREATE_APPLICATION",
-                confidence=0.88,
-                required_slots=["company_name", "product_name"],
-                filled_slots=filled_slots,
-                allowed_tools=["search_product", "create_application", "create_authorization_link"],
-                allowed_tool_categories=["knowledge", "application", "authorization"],
-                risk_level="state_create",
-                route_reason="规则命中贷款申请关键词，创建申请前必须进行执行确认。",
-                route_source="rule",
-                should_call_model=True,
-                should_call_tool=True,
-            )
-
-        if any(keyword in message for keyword in ("额度", "能贷", "多少钱", "授信")):
-            filled_slots = {}
-            if request.metadata.get("company_name"):
-                filled_slots["company_name"] = request.metadata["company_name"]
-            return RouteDecision(
-                scene="DATA_QUERY",
-                intent="CREDIT_LIMIT_QUERY",
-                raw_intent="CREDIT_LIMIT_QUERY",
-                confidence=0.91,
-                required_slots=["company_name"],
-                filled_slots=filled_slots,
-                allowed_tools=["query_credit_amount"],
-                allowed_tool_categories=["data_query"],
-                risk_level="read_only",
-                route_reason="规则命中授信额度查询关键词，数值类答案必须通过只读工具查询。",
-                route_source="rule",
-                should_call_model=True,
-                should_call_tool=True,
             )
 
         return None
@@ -92,7 +48,7 @@ class RuleBasedRouter:
         return RouteDecision.model_validate(payload)
 
 
-def default_knowledge_route(request: ChatRequest, reason: str = "未命中强规则，回退到知识问答。") -> RouteDecision:
+def default_knowledge_route(request: ChatRequest, reason: str = "未配置模型路由，回退到知识问答。") -> RouteDecision:
     return RouteDecision(
         scene="KNOWLEDGE_QA",
         intent="POLICY_OR_PRODUCT_QA",

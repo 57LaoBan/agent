@@ -26,7 +26,7 @@ class RoutePolicy:
                 capability_source="low_confidence",
             )
 
-        resolution = self._capability_resolver.resolve(request, route)
+        resolution = self._capability_resolver.resolve(route)
         if resolution.policy is None:
             return self._clarify(
                 route=route,
@@ -41,7 +41,7 @@ class RoutePolicy:
             **route.filled_slots,
             **self._metadata_slots(request, capability.required_slots),
         }
-        missing_slots = self._missing_slots(route, capability.required_slots, filled_slots)
+        missing_slots = self._missing_slots(capability.required_slots, filled_slots)
 
         if capability.capability_id == "unknown.clarify":
             return self._clarify(
@@ -107,15 +107,11 @@ class RoutePolicy:
 
     def _missing_slots(
         self,
-        route: RouteDecision,
         required_slots: list[str],
         filled_slots: dict[str, Any],
     ) -> list[str]:
         missing: list[str] = []
         for slot in required_slots:
             if not filled_slots.get(slot):
-                missing.append(slot)
-        for slot in route.missing_slots:
-            if slot not in required_slots and not filled_slots.get(slot):
                 missing.append(slot)
         return missing

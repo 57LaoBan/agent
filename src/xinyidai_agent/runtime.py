@@ -29,6 +29,7 @@ from xinyidai_agent.protocol import (
     ToolResult,
 )
 from xinyidai_agent.router import ControlledIntentRouter, IntentRouter
+from xinyidai_agent.skills import SkillRegistry
 from xinyidai_agent.system_tools import SessionMemorySystemTool
 from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry
 
@@ -46,12 +47,14 @@ class ControlledAgentLoop:
         router: IntentRouter | None = None,
         tool_registry: ToolRegistry | None = None,
         memory_manager: MemoryManager | None = None,
+        skill_registry: SkillRegistry | None = None,
         max_steps: int = 3,
     ) -> None:
         self._model = model
         self._router = router or ControlledIntentRouter(model=model)
         self._tool_registry = tool_registry or default_tool_registry()
         self._memory = memory_manager or MemoryManager()
+        self._skills = skill_registry or SkillRegistry()
         self._session_memory_tool = SessionMemorySystemTool()
         self._max_steps = max_steps
 
@@ -93,7 +96,7 @@ class ControlledAgentLoop:
 
         request = self._memory.enrich_request(request, session_state)
         yield context.transition("LISTENING", "ROUTING", "开始识别业务意图")
-        yield context.event("route_started", "diagnostic", {"strategy": "rule_first_model_then_policy"})
+        yield context.event("route_started", "diagnostic", {"strategy": "guard_model_then_policy"})
 
         route = self._router.route(request)
         yield context.event("route_decision", "diagnostic", route.model_dump())
@@ -115,7 +118,7 @@ class ControlledAgentLoop:
 
         for step in range(1, self._max_steps + 1):
             yield context.transition("ROUTING", "PLANNING_TOOL", f"第 {step} 步规划工具动作")
-            tool_call = self._plan_tool(request, route)
+            tool_call = self._plan_tool(request, route, session_state=session_state)
 
             if tool_call is None:
                 yield context.transition("PLANNING_TOOL", "ANSWERING", "无需工具，直接回答")
@@ -269,48 +272,130 @@ class ControlledAgentLoop:
             ],
         )
 
-    def _plan_tool(self, request: ChatRequest, route: RouteDecision) -> ToolCall | None:
+    def _plan_tool(
+        self,
+        request: ChatRequest,
+        route: RouteDecision,
+        session_state: SessionStateSnapshot | None = None,
+    ) -> ToolCall | None:
         if not route.should_call_tool:
             return None
 
-        if route.scene == "DATA_QUERY":
-            return ToolCall(
-                tool_call_id=str(uuid4()),
-                tool_name="query_credit_amount",
-                tool_category="data_query",
-                arguments={
-                    "company_name": route.filled_slots.get("company_name"),
-                    "query": request.user_message,
-                },
-                risk_level="read_only",
-                reason="授信额度属于确定性数值，必须调用只读数据工具。",
-            )
+        # 获取当前场景允许的工具描述
+        tool_specs = self._tool_registry.specs_for_categories(route.allowed_tool_categories)
+        if not tool_specs:
+            return None
 
-        if route.scene == "LOAN_APPLY":
-            return ToolCall(
-                tool_call_id=str(uuid4()),
-                tool_name="create_application",
-                tool_category="application",
-                arguments={
-                    "company_name": route.filled_slots.get("company_name"),
-                    "product_name": route.filled_slots.get("product_name"),
-                },
-                risk_level="state_create",
-                confirmation_required=True,
-                reason="创建贷款申请会产生业务状态，执行前必须用户确认。",
-            )
+        # 获取 Skill 文档
+        skill_section = self._skills.get_prompt_section(route.scene)
 
-        if route.scene == "KNOWLEDGE_QA":
-            return ToolCall(
-                tool_call_id=str(uuid4()),
-                tool_name="rag_search",
-                tool_category="knowledge",
-                arguments={"query": request.user_message, "top_k": request.top_k},
-                risk_level="read_only",
-                reason="知识问答需要检索证据后再生成回答。",
-            )
+        # 构建工具描述
+        tool_descriptions = "\n".join(
+            f"- `{spec.name}`（{spec.category}）：{spec.description}"
+            + (f"，必填参数：{', '.join(s.name for s in spec.input_slots if s.required)}" if spec.input_slots else "")
+            for spec in tool_specs
+        )
 
-        return None
+        # Skill 文档放在最前面，作为核心业务指导
+        system_parts: list[str] = []
+        if skill_section:
+            system_parts.append(
+                "# 业务操作指南（必须严格遵守）\n\n"
+                "以下是当前业务场景的标准操作流程，你必须按照决策流程中的条件判断来决定是否调用工具、调用哪个工具。\n\n"
+            )
+            system_parts.append(skill_section)
+            system_parts.append("\n\n---\n\n")
+
+        system_parts.append(
+            "# 你的角色\n"
+            "你是信易贷业务工具规划器。严格按照上方业务操作指南中的决策流程，"
+            "结合用户问题和当前状态，决定是否调用工具以及调用哪个工具。\n\n"
+        )
+        system_parts.append(f"## 可用工具\n{tool_descriptions}\n\n")
+        system_parts.append(
+            "## 输出格式（只输出 JSON，不要输出其他文字）\n"
+            "如果需要调用工具，输出：\n"
+            '{"tool_name": "工具名", "arguments": {参数}, "reason": "调用原因"}\n'
+            "如果不需要调用工具（例如缺少必填信息需要追问），输出：\n"
+            '{"tool_name": null, "reason": "不调用工具的原因，以及需要向用户追问的内容"}\n'
+        )
+
+        # 构建用户消息，包含会话状态摘要
+        user_parts = [
+            f"用户问题：{request.user_message}\n",
+            f"路由场景：{route.scene}\n",
+            f"已填槽位：{route.filled_slots}\n",
+            f"缺失槽位：{route.missing_slots}\n",
+            f"允许工具：{route.allowed_tools}",
+        ]
+        if session_state and session_state.short_summary:
+            user_parts.insert(0, f"会话摘要：{session_state.short_summary}\n")
+        if session_state and session_state.last_tool_results:
+            last_results = [
+                f"  - {r.tool_name}: {r.business_status or 'unknown'}" for r in session_state.last_tool_results[-2:]
+            ]
+            user_parts.append(f"\n最近工具调用：\n" + "\n".join(last_results))
+
+        messages = [
+            {"role": "system", "content": "".join(system_parts)},
+            {"role": "user", "content": "\n".join(user_parts)},
+        ]
+
+        raw = self._model.complete(messages)
+        return self._parse_tool_plan(raw, route, tool_specs)
+
+    def _parse_tool_plan(
+        self,
+        raw: str,
+        route: RouteDecision,
+        tool_specs: list,
+    ) -> ToolCall | None:
+        """解析模型的工具规划输出。"""
+        import json
+        import re
+
+        text = raw.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1:
+            return None
+
+        try:
+            payload = json.loads(text[start : end + 1])
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+        tool_name = payload.get("tool_name")
+        if not tool_name:
+            return None
+
+        # 校验工具是否在允许列表中
+        if tool_name not in route.allowed_tools:
+            return None
+
+        arguments = payload.get("arguments", {})
+        reason = payload.get("reason", "")
+
+        # 从 tool_specs 中查找对应工具的元信息
+        spec_map = {spec.name: spec for spec in tool_specs}
+        spec = spec_map.get(tool_name)
+        tool_category = spec.category if spec else "utility"
+        risk_level = spec.risk_level if spec else "read_only"
+        requires_confirmation = spec.requires_confirmation if spec else False
+
+        return ToolCall(
+            tool_call_id=str(uuid4()),
+            tool_name=tool_name,
+            tool_category=tool_category,
+            arguments=arguments,
+            risk_level=risk_level,
+            confirmation_required=requires_confirmation or route.confirmation_required,
+            reason=reason,
+        )
 
     def _build_pending_action(self, tool_call: ToolCall) -> PendingAction | None:
         if not tool_call.confirmation_required:
@@ -361,14 +446,27 @@ class ControlledAgentLoop:
         return self._summarize_tool_result(request, route, tool_result, sources)
 
     def _answer_without_tool(self, request: ChatRequest, route: RouteDecision) -> str:
+        skill_section = self._skills.get_prompt_section(route.scene)
+        system_parts: list[str] = []
+        if skill_section:
+            system_parts.append(
+                "# 业务操作指南（必须严格遵守）\n\n"
+                f"{skill_section}\n\n---\n\n"
+            )
+        system_parts.append("你是信易贷聊天助手。严格按照上方业务操作指南回答用户问题，不发起工具调用。")
         messages = [
             {
                 "role": "system",
-                "content": "你是信易贷聊天助手。仅回答用户当前问题，不发起工具调用。",
+                "content": "".join(system_parts),
             },
             {
                 "role": "user",
-                "content": f"用户问题：{request.user_message}\n\n路由结果：{route.model_dump()}",
+                "content": (
+                    f"用户问题：{request.user_message}\n\n"
+                    f"路由场景：{route.scene}\n"
+                    f"已填槽位：{route.filled_slots}\n"
+                    f"缺失槽位：{route.missing_slots}"
+                ),
             },
         ]
         return self._model.complete(messages)
@@ -381,20 +479,29 @@ class ControlledAgentLoop:
         sources: list[SourceDocument],
     ) -> list[dict[str, str]]:
         source_text = self._format_sources(sources)
+        skill_section = self._skills.get_prompt_section(route.scene)
+        system_parts: list[str] = []
+        if skill_section:
+            system_parts.append(
+                "# 业务操作指南（必须严格遵守）\n\n"
+                f"{skill_section}\n\n---\n\n"
+            )
+        system_parts.append(
+            "你是信易贷聊天助手。严格按照上方业务操作指南，基于工具结果和证据回答用户问题；"
+            "数值类结果必须说明来自工具，证据不足时要说明缺口；"
+            "不要伪造申请状态、授权状态或贷款审批结论。"
+        )
         return [
             {
                 "role": "system",
-                "content": (
-                    "你是信易贷聊天助手。你只能基于路由结果、工具结果和证据回答；"
-                    "数值类结果必须说明来自工具，证据不足时要说明缺口；"
-                    "不要伪造申请状态、授权状态或贷款审批结论。"
-                ),
+                "content": "".join(system_parts),
             },
             {
                 "role": "user",
                 "content": (
                     f"用户问题：{user_message}\n\n"
-                    f"路由结果：{route.model_dump()}\n\n"
+                    f"路由场景：{route.scene}\n"
+                    f"已填槽位：{route.filled_slots}\n\n"
                     f"工具结果：{tool_result.model_dump()}\n\n"
                     f"可用证据：\n{source_text}"
                 ),

@@ -24,8 +24,18 @@ class JsonRouterModel:
 
 
 class RouterContractTest(unittest.TestCase):
-    def test_rule_route_has_priority_over_model(self) -> None:
-        model = JsonRouterModel('{"scene":"SMALLTALK","intent":"SMALLTALK","confidence":0.99,"route_reason":"x"}')
+    def test_business_scene_is_judged_by_model(self) -> None:
+        model = JsonRouterModel(
+            """
+            {
+              "scene": "DATA_QUERY",
+              "intent": "CREDIT_LIMIT_QUERY",
+              "confidence": 0.91,
+              "filled_slots": {"company_name": "杭州示例科技有限公司"},
+              "route_reason": "模型判断用户在查询企业授信额度。"
+            }
+            """
+        )
         router = ControlledIntentRouter(model=model)
 
         route = router.route(ChatRequest(user_message="杭州示例科技有限公司能贷多少钱？"))
@@ -34,8 +44,8 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(route.intent, "CREDIT_LIMIT_QUERY")
         self.assertEqual(route.allowed_tool_categories, ["data_query"])
         self.assertEqual(route.allowed_tools, ["query_credit_amount"])
-        self.assertEqual(route.route_source, "rule")
-        self.assertEqual(model.calls, 0)
+        self.assertEqual(route.route_source, "model")
+        self.assertEqual(model.calls, 1)
 
     def test_low_information_input_is_clarified_without_model_or_rag(self) -> None:
         model = JsonRouterModel(
@@ -76,7 +86,7 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(route.intent, "CREDIT_LIMIT_QUERY")
         self.assertEqual(route.raw_intent, "CREDIT_ELIGIBILITY_QUERY")
         self.assertEqual(route.capability_id, "credit.limit.read")
-        self.assertEqual(route.capability_source, "resolved")
+        self.assertEqual(route.capability_source, "scene_default")
         self.assertEqual(route.filled_slots["company_name"], "杭州示例科技有限公司")
         self.assertEqual(route.allowed_tool_categories, ["data_query"])
         self.assertEqual(route.allowed_tools, ["query_credit_amount"])
@@ -107,7 +117,7 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(route.intent, "POLICY_OR_PRODUCT_QA")
         self.assertEqual(route.raw_intent, "query_eligibility_criteria")
         self.assertEqual(route.capability_id, "knowledge.policy.read")
-        self.assertEqual(route.capability_source, "resolved")
+        self.assertEqual(route.capability_source, "scene_default")
         self.assertEqual(route.route_source, "model")
         self.assertEqual(route.allowed_tools, ["rag_search"])
         self.assertEqual(route.allowed_tool_categories, ["knowledge"])
@@ -162,7 +172,7 @@ class RouterContractTest(unittest.TestCase):
         model = JsonRouterModel("我觉得应该查知识库，但我没有输出 JSON")
         router = ControlledIntentRouter(model=model)
 
-        route = router.route(ChatRequest(user_message="123"))
+        route = router.route(ChatRequest(user_message="帮我看看融资政策"))
 
         self.assertEqual(route.scene, "UNKNOWN")
         self.assertEqual(route.intent, "LOW_CONFIDENCE")
@@ -203,6 +213,24 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(guarded.scene, "LOAN_APPLY")
         self.assertEqual(guarded.missing_slots, ["company_name"])
         self.assertEqual(guarded.allowed_tool_categories, ["knowledge", "application", "authorization"])
+
+    def test_policy_ignores_model_invented_missing_slots(self) -> None:
+        policy = RoutePolicy()
+        route = RouteDecision(
+            scene="LOAN_APPLY",
+            intent="CREATE_APPLICATION",
+            confidence=0.91,
+            filled_slots={"product_name": "小微税贷"},
+            missing_slots=["company_name", "loan_purpose", "monthly_income", "credit_score"],
+            route_reason="模型发明了后端能力策略没有声明的必填字段。",
+            should_call_tool=True,
+        )
+
+        guarded = policy.apply(ChatRequest(user_message="我要申请小微税贷"), route)
+
+        self.assertEqual(guarded.scene, "LOAN_APPLY")
+        self.assertEqual(guarded.required_slots, ["company_name", "product_name"])
+        self.assertEqual(guarded.missing_slots, ["company_name"])
 
 
 if __name__ == "__main__":

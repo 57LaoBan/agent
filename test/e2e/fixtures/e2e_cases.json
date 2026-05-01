@@ -1,13 +1,13 @@
 {
   "backend_cases": [
     {
-      "id": "rule_credit_amount_high_confidence",
-      "title": "规则命中：授信额度查询，高置信度，直接执行只读工具",
+      "id": "model_credit_amount_high_confidence",
+      "title": "模型识别：授信额度查询，高置信度，直接执行只读工具",
       "message": "杭州示例科技有限公司能贷多少钱？",
       "metadata": {
         "company_name": "杭州示例科技有限公司"
       },
-      "expected_route_mode": "rule",
+      "expected_route_mode": "model",
       "expected_scene": "DATA_QUERY",
       "expected_intent": "CREDIT_LIMIT_QUERY",
       "expected_min_confidence": 0.9,
@@ -26,14 +26,14 @@
       "requires_live_model": true
     },
     {
-      "id": "rule_application_confirmation",
-      "title": "规则命中：贷款申请，高风险动作，停在执行前确认",
+      "id": "model_application_confirmation",
+      "title": "模型识别：贷款申请，高风险动作，停在执行前确认",
       "message": "我要申请小微税贷",
       "metadata": {
         "company_name": "杭州示例科技有限公司",
         "product_name": "小微税贷"
       },
-      "expected_route_mode": "rule",
+      "expected_route_mode": "model",
       "expected_scene": "LOAN_APPLY",
       "expected_intent": "CREATE_APPLICATION",
       "expected_min_confidence": 0.85,
@@ -44,7 +44,7 @@
       "expected_stop_reason": "waiting_confirmation",
       "expected_business_status": "AUTH_REQUIRED",
       "expected_pending_contains": ["确认创建贷款申请", "杭州示例科技有限公司", "小微税贷"],
-      "requires_live_model": false
+      "requires_live_model": true
     },
     {
       "id": "model_knowledge_qa_live_model",
@@ -84,19 +84,22 @@
   ],
   "controlled_route_cases": [
     {
-      "id": "controlled_rule_credit_amount",
-      "title": "规则优先：额度关键词不调用模型识别，直接进入 DATA_QUERY",
+      "id": "controlled_model_credit_amount",
+      "title": "模型识别：额度查询由模型判断进入 DATA_QUERY",
       "message": "杭州示例科技有限公司能贷多少钱？",
       "metadata": {
         "company_name": "杭州示例科技有限公司"
       },
       "model_route": {
-        "scene": "SMALLTALK",
-        "intent": "SMALLTALK",
-        "confidence": 0.99,
-        "route_reason": "如果规则没有优先级，模型会误判成闲聊。"
+        "scene": "DATA_QUERY",
+        "intent": "CREDIT_LIMIT_QUERY",
+        "confidence": 0.91,
+        "filled_slots": {
+          "company_name": "杭州示例科技有限公司"
+        },
+        "route_reason": "模型判断用户在查询企业授信额度。"
       },
-      "expected_model_route_calls": 0,
+      "expected_model_route_calls": 1,
       "expected_scene": "DATA_QUERY",
       "expected_intent": "CREDIT_LIMIT_QUERY",
       "expected_allowed_tool_categories": ["data_query"],

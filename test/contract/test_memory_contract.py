@@ -64,6 +64,36 @@ class FakeModel:
                 """
             return '{"tool_name":"update_session_state","arguments":{"operations":[]}}'
 
+        if "意图识别器" in system:
+            if "重庆征信" in user:
+                return """
+                {
+                  "scene": "DATA_QUERY",
+                  "intent": "CREDIT_LIMIT_QUERY",
+                  "confidence": 0.92,
+                  "filled_slots": {"company_name": "重庆征信"},
+                  "route_reason": "测试模型根据用户输入判断为额度查询。"
+                }
+                """
+            if "杭州示例科技有限公司" in user:
+                return """
+                {
+                  "scene": "DATA_QUERY",
+                  "intent": "CREDIT_LIMIT_QUERY",
+                  "confidence": 0.92,
+                  "filled_slots": {"company_name": "杭州示例科技有限公司"},
+                  "route_reason": "测试模型根据用户输入判断为额度查询。"
+                }
+                """
+            return """
+            {
+              "scene": "DATA_QUERY",
+              "intent": "CREDIT_LIMIT_QUERY",
+              "confidence": 0.9,
+              "route_reason": "测试模型识别为额度查询。"
+            }
+            """
+
         if "50万元" in user:
             return "已根据工具结果生成回答：50万元。"
         return "已根据工具结果生成回答。"

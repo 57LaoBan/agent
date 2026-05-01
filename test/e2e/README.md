@@ -6,7 +6,7 @@
 
 - 前端聊天框能否把用户消息发送到后端 Agent。
 - 后端 Agent 能否真实调用模型生成回答。
-- Agent 能否区分规则命中、模型识别、低置信度追问和槽位缺失追问。
+- Agent 能否区分模型识别、低置信度追问和槽位缺失追问。
 - 数值查询场景能否只暴露 `data_query` 分类下的工具，并调用 `query_credit_amount` 返回 mock 数值。
 - 申请场景能否停在执行前确认，而不是直接创建业务状态。
 
@@ -52,12 +52,12 @@ node .\test\e2e\run_frontend_e2e.mjs --start-backend --start-frontend
 只运行单个样本：
 
 ```powershell
-python .\test\e2e\run_backend_e2e.py --start-server --case rule_credit_amount_high_confidence
+python .\test\e2e\run_backend_e2e.py --start-server --case model_credit_amount_high_confidence
 node .\test\e2e\run_frontend_e2e.mjs --start-backend --start-frontend --case frontend_rule_credit_amount_live_sse
 ```
 
 ## 用例分层
 
 - `backend_cases` 调真实 HTTP API 和真实模型，适合验证前后联调的真实效果。
-- `controlled_route_cases` 使用确定性模型桩，适合稳定验证低置信度、槽位缺失、规则优先级等边界。
+- `controlled_route_cases` 使用确定性模型桩，适合稳定验证模型场景判断、低置信度和槽位缺失等边界。
 - `frontend_cases` 用 Playwright 或人工页面输入验证聊天区和检测窗口是否符合预期。

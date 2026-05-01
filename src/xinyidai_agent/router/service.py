@@ -8,7 +8,7 @@ from xinyidai_agent.router.rules import RuleBasedRouter, default_knowledge_route
 
 
 class ControlledIntentRouter:
-    """规则优先、模型补充、策略收口的业务路由器。"""
+    """本地守卫、模型判别、策略收口的业务路由器。"""
 
     def __init__(
         self,

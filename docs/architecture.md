@@ -5,7 +5,7 @@
 ```text
 ChatRequest
   -> Runtime 受控循环
-  -> ControlledIntentRouter 规则优先、模型补充、策略收口
+  -> ControlledIntentRouter 本地守卫、模型判别、策略收口
   -> RouteDecision 识别场景、允许工具分类和允许工具
   -> ToolCall 提出候选动作
   -> ToolRegistry 查找并执行工具
@@ -24,7 +24,7 @@ ChatRequest
 - `memory` 负责结构化短期会话状态，不直接猜测用户语义。
 - `system_tools` 负责 Agent 自身运行所需工具，例如模型可见的 `update_session_state`。
 - `capabilities` 定义后端允许的业务能力池，能力负责派生标准意图、工具池、槽位、风险等级和确认策略。
-- `router` 负责业务意图识别，采用规则优先、模型结构化识别、策略校验三层设计。
+- `router` 负责业务意图识别，采用本地守卫、模型结构化识别、策略校验三层设计；业务场景不再依赖关键词匹配。
 - `rag` 只负责检索结果和 trace，不生成最终回答。
 - `tools` 负责把 RAG、mock 数据接口、申请动作等能力包装成 Agent 可调用工具，并维护工具分类、风险等级和工具描述。
 - `runtime` 只负责把一次问答流程串起来，不直接依赖 retriever 或具体业务接口。
@@ -44,7 +44,7 @@ ChatRequest
 
 ## 业务能力与工具权限
 
-工具权限不再由模型直接决定，而是由后端能力策略派生。模型只提供 `scene`、`raw_intent`、槽位和置信度等语义信号，`RoutePolicy` 通过 `CapabilityResolver` 在预定义能力池中选择 `capability_id`，再生成标准 `intent`、`allowed_tools`、`risk_level` 和 `confirmation_required`。
+工具权限不再由模型直接决定，而是由后端能力策略派生。模型主要提供 `scene`、槽位和置信度等语义信号，`raw_intent` 仅用于诊断展示；`RoutePolicy` 通过 `CapabilityResolver` 按 `scene` 在预定义能力池中选择 `capability_id`，再生成标准 `intent`、`allowed_tools`、`risk_level` 和 `confirmation_required`。
 
 ```text
 模型候选路由

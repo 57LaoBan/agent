@@ -25,8 +25,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 | ID | 前端输入 | 期望识别来源 | 期望场景 | 期望工具暴露 | 期望结果 |
 | --- | --- | --- | --- | --- | --- |
-| FE-001 | `杭州示例科技有限公司能贷多少钱？` | 规则命中，高置信度 | `DATA_QUERY` / `CREDIT_LIMIT_QUERY` | 只暴露 `data_query`，调用 `query_credit_amount` | 聊天回答包含 `50万元`，检测窗口工具结果包含 `credit_amount=50万元`、`data_time=2026-04-28` |
-| FE-002 | `我要申请小微税贷` | 规则命中，高风险动作 | `LOAN_APPLY` / `CREATE_APPLICATION` | 暴露 `knowledge`、`application`、`authorization` 分类，但不直接执行创建 | 聊天区出现 `确认创建贷款申请` 卡片，状态为 `AUTH_REQUIRED`，等待用户确认 |
+| FE-001 | `杭州示例科技有限公司能贷多少钱？` | 模型识别，高置信度 | `DATA_QUERY` / `CREDIT_LIMIT_QUERY` | 只暴露 `data_query`，调用 `query_credit_amount` | 聊天回答包含 `50万元`，检测窗口工具结果包含 `credit_amount=50万元`、`data_time=2026-04-28` |
+| FE-002 | `我要申请小微税贷` | 模型识别，高风险动作 | `LOAN_APPLY` / `CREATE_APPLICATION` | 暴露 `knowledge`、`application`、`authorization` 分类，但不直接执行创建 | 聊天区出现 `确认创建贷款申请` 卡片，状态为 `AUTH_REQUIRED`，等待用户确认 |
 | FE-003 | `信易贷适合哪些企业？` | 模型识别或知识问答回退 | `KNOWLEDGE_QA` / `POLICY_OR_PRODUCT_QA` | 只暴露并调用 `rag_search` | 聊天回答基于检索证据生成，检测窗口工具栏显示 `rag_search` 和 `RAG_RESULT_READY` |
 | FE-004 | `判断杭州示例科技有限公司是否符合融资准入，能不能获得平台贷款支持` | 模型识别，非关键词输入 | `DATA_QUERY` | 只暴露 `data_query`，调用 `query_credit_amount` | 聊天回答包含 `50万元`；若模型未稳定识别，该用例就是当前意图识别能力的真实风险点 |
 | FE-005 | `那个东西能不能帮我弄一下？` | 模型识别，低置信度 | `UNKNOWN` / `LOW_CONFIDENCE` | 不暴露工具 | 聊天区应追问用户想查询政策、查询额度还是发起贷款申请，不应调用任何工具 |

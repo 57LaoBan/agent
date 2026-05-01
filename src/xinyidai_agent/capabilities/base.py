@@ -17,7 +17,6 @@ class CapabilityPolicy:
     standard_intent: str
     description: str
     raw_intent_aliases: list[str] = field(default_factory=list)
-    keywords: list[str] = field(default_factory=list)
     required_slots: list[str] = field(default_factory=list)
     optional_slots: list[str] = field(default_factory=list)
     allowed_tools: list[str] = field(default_factory=list)
