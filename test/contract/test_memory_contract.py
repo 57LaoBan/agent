@@ -15,7 +15,11 @@ from xinyidai_agent.tools.registry import ToolRegistry  # noqa: E402
 
 
 class FakeModel:
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: dict[str, object] | None = None,
+    ) -> str:
         system = messages[0]["content"] if messages else ""
         user = messages[-1]["content"] if messages else ""
         if "update_session_state" in system:

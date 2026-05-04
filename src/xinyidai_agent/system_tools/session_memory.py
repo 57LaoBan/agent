@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from xinyidai_agent.llm import ChatModel
+from xinyidai_agent.llm import JSON_OBJECT_RESPONSE_FORMAT, ChatModel
 from xinyidai_agent.protocol import ChatRequest, SessionStateSnapshot
 
 
@@ -61,7 +61,10 @@ class SessionMemorySystemTool:
         request: ChatRequest,
         state: SessionStateSnapshot,
     ) -> SessionMemoryToolExecution:
-        raw = model.complete(self._build_messages(request, state))
+        raw = model.complete(
+            self._build_messages(request, state),
+            response_format=JSON_OBJECT_RESPONSE_FORMAT,
+        )
         try:
             arguments = self._parse_arguments(raw)
         except (ValueError, TypeError, json.JSONDecodeError, ValidationError) as exc:

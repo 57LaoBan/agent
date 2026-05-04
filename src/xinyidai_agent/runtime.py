@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
 
-from xinyidai_agent.llm import ChatModel
+from xinyidai_agent.llm import JSON_OBJECT_RESPONSE_FORMAT, ChatModel
 from xinyidai_agent.memory import MemoryManager
 from xinyidai_agent.protocol import (
     AgentEvent,
@@ -286,22 +286,27 @@ class ControlledAgentLoop:
         if not tool_specs:
             return None
 
-        # 获取 Skill 文档
-        skill_section = self._skills.get_prompt_section(route.scene)
+        # 按当前阶段展开 Skill：先给索引摘要，再给工具规划所需章节。
+        skill_section = self._build_skill_prompt(route.scene, "tool_planning")
 
         # 构建工具描述
         tool_descriptions = "\n".join(
             f"- `{spec.name}`（{spec.category}）：{spec.description}"
-            + (f"，必填参数：{', '.join(s.name for s in spec.input_slots if s.required)}" if spec.input_slots else "")
+            + (
+                f"，必填参数：{', '.join(s.name for s in spec.input_slots if s.required)}"
+                if spec.input_slots
+                else ""
+            )
             for spec in tool_specs
         )
 
-        # Skill 文档放在最前面，作为核心业务指导
+        # Skill 指南放在最前面，作为核心业务指导。
         system_parts: list[str] = []
         if skill_section:
             system_parts.append(
                 "# 业务操作指南（必须严格遵守）\n\n"
-                "以下是当前业务场景的标准操作流程，你必须按照决策流程中的条件判断来决定是否调用工具、调用哪个工具。\n\n"
+                "以下 Skill 采用渐进式披露：索引用于确认能力边界，当前 Skill 展开部分才是本阶段的执行依据。"
+                "你必须按照当前 Skill 的决策流程决定是否调用工具、调用哪个工具。\n\n"
             )
             system_parts.append(skill_section)
             system_parts.append("\n\n---\n\n")
@@ -341,8 +346,12 @@ class ControlledAgentLoop:
             {"role": "user", "content": "\n".join(user_parts)},
         ]
 
-        raw = self._model.complete(messages)
-        return self._parse_tool_plan(raw, route, tool_specs)
+        raw = self._model.complete(messages, response_format=JSON_OBJECT_RESPONSE_FORMAT)
+        planned_call = self._parse_tool_plan(raw, route, tool_specs)
+        if planned_call is not None:
+            return planned_call
+
+        return self._build_deterministic_tool_call(request, route, tool_specs)
 
     def _parse_tool_plan(
         self,
@@ -397,6 +406,55 @@ class ControlledAgentLoop:
             reason=reason,
         )
 
+    def _build_deterministic_tool_call(
+        self,
+        request: ChatRequest,
+        route: RouteDecision,
+        tool_specs: list,
+    ) -> ToolCall | None:
+        """当路由只允许一个明确工具时，用后端槽位策略兜底生成调用。"""
+        if len(route.allowed_tools) != 1 or len(tool_specs) != 1:
+            return None
+
+        spec = tool_specs[0]
+        if spec.name != route.allowed_tools[0]:
+            return None
+
+        arguments: dict[str, object] = {}
+        for slot in spec.input_slots:
+            value = self._default_tool_argument(slot.name, request, route)
+            if value is None and slot.required:
+                return None
+            if value is not None:
+                arguments[slot.name] = value
+
+        return ToolCall(
+            tool_call_id=str(uuid4()),
+            tool_name=spec.name,
+            tool_category=spec.category,
+            arguments=arguments,
+            risk_level=spec.risk_level,
+            confirmation_required=spec.requires_confirmation or route.confirmation_required,
+            reason="模型未返回有效工具规划，后端根据单一允许工具和已确认槽位生成兜底调用。",
+        )
+
+    def _default_tool_argument(
+        self,
+        slot_name: str,
+        request: ChatRequest,
+        route: RouteDecision,
+    ) -> object | None:
+        """从稳定上下文中提取工具入参，不猜测业务字段。"""
+        if slot_name == "query":
+            return request.user_message
+        if slot_name == "top_k":
+            return request.top_k
+        if slot_name in route.filled_slots:
+            return route.filled_slots[slot_name]
+        if slot_name in request.metadata:
+            return request.metadata[slot_name]
+        return None
+
     def _build_pending_action(self, tool_call: ToolCall) -> PendingAction | None:
         if not tool_call.confirmation_required:
             return None
@@ -446,7 +504,7 @@ class ControlledAgentLoop:
         return self._summarize_tool_result(request, route, tool_result, sources)
 
     def _answer_without_tool(self, request: ChatRequest, route: RouteDecision) -> str:
-        skill_section = self._skills.get_prompt_section(route.scene)
+        skill_section = self._build_skill_prompt(route.scene, "direct_answer")
         system_parts: list[str] = []
         if skill_section:
             system_parts.append(
@@ -479,7 +537,7 @@ class ControlledAgentLoop:
         sources: list[SourceDocument],
     ) -> list[dict[str, str]]:
         source_text = self._format_sources(sources)
-        skill_section = self._skills.get_prompt_section(route.scene)
+        skill_section = self._build_skill_prompt(route.scene, "tool_result_answer")
         system_parts: list[str] = []
         if skill_section:
             system_parts.append(
@@ -507,6 +565,17 @@ class ControlledAgentLoop:
                 ),
             },
         ]
+
+    def _build_skill_prompt(self, scene: str, disclosure: str) -> str:
+        """按渐进式披露组装 Skill prompt。"""
+        index_section = self._skills.get_index_prompt_section()
+        current_section = self._skills.get_prompt_section(scene, disclosure)
+        parts: list[str] = []
+        if index_section:
+            parts.append(index_section)
+        if current_section:
+            parts.append("# 当前 Skill 展开（按需层）\n\n" + current_section)
+        return "\n\n---\n\n".join(parts)
 
     def _build_clarifying_question(self, route: RouteDecision) -> str:
         if "user_intent" in route.missing_slots:

@@ -17,7 +17,11 @@ from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry  #
 
 
 class FakeModel:
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: dict[str, object] | None = None,
+    ) -> str:
         system = messages[0]["content"] if messages else ""
         if "意图识别器" in system:
             return """

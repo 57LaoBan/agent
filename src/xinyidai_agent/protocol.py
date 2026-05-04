@@ -174,6 +174,19 @@ class RetrievalTrace(BaseModel):
     steps: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ModelRouteOutput(BaseModel):
+    """模型意图识别的候选输出，只承载语义理解结果。"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    scene: RouteScene
+    raw_intent: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    filled_slots: dict[str, Any] = Field(default_factory=dict)
+    missing_slots: list[str] = Field(default_factory=list)
+    route_reason: str
+
+
 class RouteDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
 

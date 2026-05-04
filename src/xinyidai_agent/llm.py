@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from openai import OpenAI
 
 from xinyidai_agent.config import AgentConfig
 
 
+ResponseFormat = dict[str, Any]
+JSON_OBJECT_RESPONSE_FORMAT: ResponseFormat = {"type": "json_object"}
+
+
 class ChatModel(Protocol):
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: ResponseFormat | None = None,
+    ) -> str:
         """根据消息列表生成回答。"""
 
 
@@ -24,9 +32,19 @@ class OpenAICompatibleChatModel:
             timeout=config.request_timeout_seconds,
         )
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: ResponseFormat | None = None,
+    ) -> str:
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+
         completion = self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
+            **kwargs,
         )
         return completion.choices[0].message.content or ""

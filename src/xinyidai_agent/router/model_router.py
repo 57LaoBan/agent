@@ -6,9 +6,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from xinyidai_agent.llm import ChatModel
-from xinyidai_agent.protocol import ChatRequest, RouteDecision
+from xinyidai_agent.llm import JSON_OBJECT_RESPONSE_FORMAT, ChatModel
+from xinyidai_agent.protocol import ChatRequest, ModelRouteOutput, RouteDecision
 from xinyidai_agent.router.rules import unknown_route
+
+
+MODEL_ROUTE_SCHEMA = ModelRouteOutput.model_json_schema()
+MODEL_ROUTE_SCHEMA_TEXT = json.dumps(MODEL_ROUTE_SCHEMA, ensure_ascii=False)
 
 
 class ModelIntentRouter:
@@ -18,11 +22,15 @@ class ModelIntentRouter:
         self._model = model
 
     def route(self, request: ChatRequest) -> RouteDecision:
-        raw = self._model.complete(self._build_messages(request))
+        raw = self._model.complete(
+            self._build_messages(request),
+            response_format=JSON_OBJECT_RESPONSE_FORMAT,
+        )
         try:
             payload = self._parse_json(raw)
-            payload = self._normalize_payload(payload)
-            return RouteDecision.model_validate(payload)
+            payload = self._normalize_model_payload(payload)
+            model_output = ModelRouteOutput.model_validate(payload)
+            return self._to_route_decision(model_output)
         except (ValueError, TypeError, ValidationError) as exc:
             return unknown_route(
                 request,
@@ -57,6 +65,7 @@ class ModelIntentRouter:
                     "如果用户输入只是数字、乱码、无业务含义短句，scene 必须返回 UNKNOWN，"
                     "confidence 不得超过 0.5，missing_slots 写入 [\"user_intent\"]。"
                     "filled_slots 必须是 JSON object；没有槽位时返回 {}，不能返回 []。"
+                    f"\n\n目标 JSON Schema：{MODEL_ROUTE_SCHEMA_TEXT}"
                 ),
             },
             {
@@ -81,21 +90,30 @@ class ModelIntentRouter:
 
         return json.loads(text[start : end + 1])
 
-    def _normalize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(payload)
-        normalized["route_source"] = "model"
-        if not normalized.get("raw_intent") and normalized.get("intent"):
-            normalized["raw_intent"] = normalized["intent"]
-        if not normalized.get("intent"):
-            normalized["intent"] = normalized.get("raw_intent") or "UNKNOWN"
-        normalized.pop("allowed_tools", None)
-        normalized.pop("allowed_tool_categories", None)
-        normalized.pop("risk_level", None)
-        normalized.pop("confirmation_required", None)
-        if normalized.get("filled_slots") == []:
+    def _normalize_model_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        normalized: dict[str, Any] = {
+            "scene": payload.get("scene"),
+            "raw_intent": payload.get("raw_intent") or payload.get("intent"),
+            "confidence": payload.get("confidence"),
+            "filled_slots": payload.get("filled_slots", {}),
+            "missing_slots": payload.get("missing_slots", []),
+            "route_reason": payload.get("route_reason"),
+        }
+        if normalized["filled_slots"] == []:
             normalized["filled_slots"] = {}
-        if normalized.get("missing_slots") == {}:
+        if normalized["missing_slots"] == {}:
             normalized["missing_slots"] = []
-        if normalized.get("required_slots") == {}:
-            normalized["required_slots"] = []
         return normalized
+
+    def _to_route_decision(self, output: ModelRouteOutput) -> RouteDecision:
+        raw_intent = output.raw_intent or "UNKNOWN"
+        return RouteDecision(
+            scene=output.scene,
+            intent=raw_intent,
+            raw_intent=raw_intent,
+            confidence=output.confidence,
+            filled_slots=output.filled_slots,
+            missing_slots=output.missing_slots,
+            route_reason=output.route_reason,
+            route_source="model",
+        )
