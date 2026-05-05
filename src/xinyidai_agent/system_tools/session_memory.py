@@ -53,7 +53,13 @@ class SessionMemorySystemTool:
         "product_name": str,
         "application_id": str,
     }
-    _clear_targets = {"last_credit_amount", "pending_action", "selected_product_name"}
+    _clear_targets = {
+        "last_credit_amount",
+        "last_application_id",
+        "authorization_status",
+        "pending_action",
+        "selected_product_name",
+    }
 
     def plan_and_execute(
         self,
@@ -91,7 +97,10 @@ class SessionMemorySystemTool:
         selected_company_name = state.selected_company_name
         selected_product_name = state.selected_product_name
         last_credit_amount = state.last_credit_amount
+        last_application_id = state.last_application_id
+        authorization_status = state.authorization_status
         pending_action = state.pending_action
+        confirmation_status = state.confirmation_status
 
         applied: list[dict[str, Any]] = []
         rejected: list[dict[str, Any]] = []
@@ -112,6 +121,10 @@ class SessionMemorySystemTool:
                     selected_company_name = str(operation.value)
                     if old_value and old_value != operation.value:
                         last_credit_amount = None
+                        last_application_id = None
+                        authorization_status = None
+                        pending_action = None
+                        confirmation_status = "none"
                 if slot == "product_name":
                     selected_product_name = str(operation.value)
                 applied.append(operation.model_dump())
@@ -124,6 +137,10 @@ class SessionMemorySystemTool:
                 if slot == "company_name":
                     selected_company_name = None
                     last_credit_amount = None
+                    last_application_id = None
+                    authorization_status = None
+                    pending_action = None
+                    confirmation_status = "none"
                 if slot == "product_name":
                     selected_product_name = None
                 applied.append(operation.model_dump())
@@ -132,8 +149,13 @@ class SessionMemorySystemTool:
             if operation.op == "clear_result":
                 if operation.target == "last_credit_amount":
                     last_credit_amount = None
+                if operation.target == "last_application_id":
+                    last_application_id = None
+                if operation.target == "authorization_status":
+                    authorization_status = None
                 if operation.target == "pending_action":
                     pending_action = None
+                    confirmation_status = "none"
                 if operation.target == "selected_product_name":
                     selected_product_name = None
                     confirmed_slots.pop("product_name", None)
@@ -149,6 +171,9 @@ class SessionMemorySystemTool:
                 "selected_company_name": selected_company_name,
                 "selected_product_name": selected_product_name,
                 "last_credit_amount": last_credit_amount,
+                "last_application_id": last_application_id,
+                "authorization_status": authorization_status,
+                "confirmation_status": confirmation_status,
                 "short_summary": self._build_summary(
                     state=state,
                     confirmed_slots=confirmed_slots,
@@ -156,6 +181,9 @@ class SessionMemorySystemTool:
                     selected_company_name=selected_company_name,
                     selected_product_name=selected_product_name,
                     last_credit_amount=last_credit_amount,
+                    last_application_id=last_application_id,
+                    authorization_status=authorization_status,
+                    confirmation_status=confirmation_status,
                 ),
             }
         )
@@ -204,7 +232,7 @@ class SessionMemorySystemTool:
                     {
                         "op": "set_slot | clear_slot | clear_result",
                         "slot": "company_name | product_name | application_id",
-                        "target": "last_credit_amount | pending_action | selected_product_name",
+                        "target": "last_credit_amount | last_application_id | authorization_status | pending_action | selected_product_name",
                         "value": "写入值",
                         "source": "user_explicit | tool_result | route_result | system",
                         "confidence": 0.0,
@@ -221,7 +249,7 @@ class SessionMemorySystemTool:
                     "你可以调用系统工具 update_session_state 更新短期业务记忆。"
                     "是否把用户输入中的信息写入 session，由你根据语义判断；不要依赖固定关键词。"
                     "只输出 JSON，不要输出解释文字。"
-                    "如果用户明确切换企业主体，应 set_slot company_name，并在必要时 clear_result last_credit_amount。"
+                    "如果用户明确切换企业主体，应 set_slot company_name，并在必要时 clear_result last_credit_amount、pending_action。"
                     "如果用户只是闲聊或没有新增业务状态，operations 返回空数组。"
                     f"工具调用格式：{json.dumps(schema, ensure_ascii=False)}"
                 ),
@@ -265,20 +293,31 @@ class SessionMemorySystemTool:
         selected_company_name: str | None,
         selected_product_name: str | None,
         last_credit_amount: dict[str, Any] | None,
+        last_application_id: str | None,
+        authorization_status: str | None,
+        confirmation_status: str,
     ) -> str:
         parts: list[str] = []
         if state.active_scene:
             parts.append(f"active_scene={state.active_scene}")
         if state.active_capability_id:
             parts.append(f"capability={state.active_capability_id}")
+        if state.active_flow:
+            parts.append(f"flow={state.active_flow}")
+        if state.current_stage:
+            parts.append(f"stage={state.current_stage}")
         if selected_company_name:
             parts.append(f"company={selected_company_name}")
         if selected_product_name:
             parts.append(f"product={selected_product_name}")
         if last_credit_amount:
             parts.append(f"last_credit_amount={last_credit_amount.get('credit_amount')}")
+        if last_application_id:
+            parts.append(f"last_application_id={last_application_id}")
+        if authorization_status:
+            parts.append(f"authorization={authorization_status}")
         if awaiting_slots:
             parts.append(f"awaiting={','.join(awaiting_slots)}")
-        if state.confirmation_status != "none":
-            parts.append(f"confirmation={state.confirmation_status}")
+        if confirmation_status != "none":
+            parts.append(f"confirmation={confirmation_status}")
         return "; ".join(parts)

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from openai import OpenAI
-
 from xinyidai_agent.config import AgentConfig
 
 
@@ -22,6 +20,11 @@ class ChatModel(Protocol):
 
 class OpenAICompatibleChatModel:
     def __init__(self, config: AgentConfig) -> None:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("缺少 openai 依赖，无法创建 OpenAI 兼容模型客户端。") from exc
+
         if not config.llm_api_key:
             raise RuntimeError("缺少 LLM_API_KEY 或 DASHSCOPE_API_KEY。")
 

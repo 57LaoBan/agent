@@ -15,10 +15,15 @@ AgentEventType = Literal[
     "system_tool_result",
     "session_updated",
     "state_changed",
+    "runtime_step_started",
+    "runtime_step_decision",
+    "runtime_step_finished",
     "route_started",
     "route_decision",
     "tool_call_proposed",
+    "pending_action_validated",
     "confirmation_required",
+    "handoff_required",
     "tool_started",
     "tool_result",
     "assistant_delta",
@@ -72,6 +77,18 @@ ActionType = Literal["business_action", "open_url", "open_miniprogram", "contact
 NextStepType = Literal["none", "suggest_tool", "ask_user", "stop_with_action"]
 DecisionAction = Literal["finish", "continue_tool", "ask_user", "reject"]
 ConfirmationStatus = Literal["none", "waiting", "confirmed", "cancelled"]
+RuntimeStepType = Literal[
+    "ROUTE",
+    "ASK_USER",
+    "ANSWER_WITHOUT_TOOL",
+    "PROPOSE_TOOL",
+    "EXECUTE_TOOL",
+    "PROPOSE_PENDING_ACTION",
+    "WAIT_CONFIRMATION",
+    "GENERATE_FINAL_ANSWER",
+    "HANDOFF",
+    "STOP",
+]
 
 
 class AuditInfo(BaseModel):
@@ -170,6 +187,9 @@ class RetrievalTrace(BaseModel):
     query: str
     top_k: int
     results_count: int
+    retriever_type: str = "unknown"
+    index_version: str = "unknown"
+    mock: bool = False
     rerank_applied: bool = False
     steps: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -250,9 +270,32 @@ class PendingAction(BaseModel):
     tool_call: ToolCall
     title: str
     summary: str
+    risk_level: RiskLevel = "read_only"
     confirm_label: str = "确认"
     cancel_label: str = "取消"
     details: list[dict[str, str]] = Field(default_factory=list)
+    session_id: str | None = None
+    scene: RouteScene | None = None
+    capability_id: str | None = None
+    stage: str | None = None
+    slot_snapshot: dict[str, Any] = Field(default_factory=dict)
+    precondition_hash: str | None = None
+    expires_at: str | None = None
+    created_at: str | None = None
+
+
+class RuntimeStepDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    step_type: RuntimeStepType
+    reason: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    tool_call: ToolCall | None = None
+    pending_action: PendingAction | None = None
+    answer: str | None = None
+    question: str | None = None
+    missing_slots: list[str] = Field(default_factory=list)
+    handoff_reason: str | None = None
 
 
 class SessionToolResult(BaseModel):
@@ -270,6 +313,8 @@ class SessionStateSnapshot(BaseModel):
     session_id: str
     active_scene: RouteScene | None = None
     active_capability_id: str | None = None
+    active_flow: str | None = None
+    current_stage: str | None = None
     confirmed_slots: dict[str, Any] = Field(default_factory=dict)
     pending_slots: dict[str, Any] = Field(default_factory=dict)
     awaiting_slots: list[str] = Field(default_factory=list)
@@ -280,7 +325,12 @@ class SessionStateSnapshot(BaseModel):
     selected_company_name: str | None = None
     selected_product_name: str | None = None
     last_credit_amount: dict[str, Any] | None = None
+    last_application_id: str | None = None
+    authorization_status: str | None = None
     short_summary: str = ""
+    recent_turns: list[dict[str, Any]] = Field(default_factory=list)
+    completed_stages: list[str] = Field(default_factory=list)
+    stage_history: list[dict[str, Any]] = Field(default_factory=list)
     turn_count: int = 0
     updated_at: str
 
@@ -342,6 +392,16 @@ class ChatRequest(BaseModel):
     user_message: str
     session_id: str | None = None
     top_k: int = 5
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConfirmActionRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    action_id: str
+    confirmed: bool
+    user_message: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -1,0 +1,12 @@
+{
+  "case_id": "knowledge_qa_no_evidence",
+  "turns": [
+    {
+      "user": "信易贷适合哪些企业？",
+      "expect": {
+        "business_status": "PARTIAL_DATA",
+        "must_not_fabricate": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "case_id": "loan_apply_pending_create",
+  "turns": [
+    {
+      "user": "我要申请小微税贷，企业是杭州示例科技有限公司",
+      "expect": {
+        "stop_reason": "waiting_confirmation",
+        "pending_action.risk_level": "state_create",
+        "tool_not_executed": "create_application"
+      }
+    }
+  ]
+}

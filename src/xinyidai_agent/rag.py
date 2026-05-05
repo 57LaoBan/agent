@@ -18,6 +18,9 @@ class EmptyRetriever:
             query=query,
             top_k=top_k,
             results_count=0,
+            retriever_type="empty",
+            index_version="not_configured",
+            mock=True,
             rerank_applied=False,
             steps=[{"name": "empty_retriever", "reason": "真实 RAG 尚未接入"}],
         )

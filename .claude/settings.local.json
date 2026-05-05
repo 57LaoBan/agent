@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest test/contract/test_pending_action_validator.py -v)",
+      "Bash(python -m pytest test/contract/test_controlled_step_policy.py -v)",
+      "Bash(git add *)"
+    ]
+  }
+}

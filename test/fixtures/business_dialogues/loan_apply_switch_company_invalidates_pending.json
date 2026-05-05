@@ -1,0 +1,18 @@
+{
+  "case_id": "loan_apply_switch_company_invalidates_pending",
+  "turns": [
+    {
+      "user": "我要申请小微税贷，企业是杭州示例科技有限公司",
+      "expect": {
+        "stop_reason": "waiting_confirmation"
+      }
+    },
+    {
+      "user": "换成重庆征信",
+      "expect": {
+        "pending_action_invalidated": true,
+        "last_credit_amount_cleared": true
+      }
+    }
+  ]
+}

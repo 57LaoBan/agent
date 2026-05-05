@@ -7,12 +7,15 @@ from uuid import uuid4
 
 from xinyidai_agent.llm import JSON_OBJECT_RESPONSE_FORMAT, ChatModel
 from xinyidai_agent.memory import MemoryManager
+from xinyidai_agent.evidence_policy import EvidencePolicy
+from xinyidai_agent.policies import RiskPolicy
 from xinyidai_agent.protocol import (
     AgentEvent,
     AgentEventType,
     AgentState,
     ChatRequest,
     ChatResponse,
+    ConfirmActionRequest,
     DiagnosticEvent,
     EvidenceState,
     EventVisibility,
@@ -22,13 +25,17 @@ from xinyidai_agent.protocol import (
     PerformanceStage,
     RetrievalTrace,
     RouteDecision,
+    RuntimeStepDecision,
     SessionStateSnapshot,
     SourceDocument,
     StateTransition,
     ToolCall,
     ToolResult,
 )
-from xinyidai_agent.router import ControlledIntentRouter, IntentRouter
+from xinyidai_agent.router import ControlledIntentRouter, IntentRouter, RoutePolicy
+from xinyidai_agent.pending_actions import PendingActionBuilder
+from xinyidai_agent.runtime_policy import RuntimeStepContext, RuntimeStepPolicy
+from xinyidai_agent.runtime_state import RuntimeStateReducer
 from xinyidai_agent.skills import SkillRegistry
 from xinyidai_agent.system_tools import SessionMemorySystemTool
 from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry
@@ -56,6 +63,12 @@ class ControlledAgentLoop:
         self._memory = memory_manager or MemoryManager()
         self._skills = skill_registry or SkillRegistry()
         self._session_memory_tool = SessionMemorySystemTool()
+        self._action_policy = RoutePolicy()
+        self._state_reducer = RuntimeStateReducer()
+        self._pending_action_builder = PendingActionBuilder()
+        self._step_policy = RuntimeStepPolicy()
+        self._evidence_policy = EvidencePolicy()
+        self._risk_policy = RiskPolicy()
         self._max_steps = max_steps
 
     def run(self, request: ChatRequest) -> Iterator[AgentEvent]:
@@ -100,29 +113,140 @@ class ControlledAgentLoop:
 
         route = self._router.route(request)
         yield context.event("route_decision", "diagnostic", route.model_dump())
+        session_state = self._state_reducer.apply_route(session_state, route)
 
-        if route.missing_slots:
-            yield context.transition("ROUTING", "CLARIFYING", "缺少必要业务槽位")
-            question = self._build_clarifying_question(route)
-            yield from context.user_answer_events(question)
-            yield context.transition("CLARIFYING", "FINISHED", "等待用户补充信息")
-            session_state = self._memory.update(
-                session_state,
-                request,
-                route=route,
-                stop_reason="missing_slots",
-            )
-            yield context.event("session_updated", "diagnostic", session_state.model_dump())
-            yield context.event("turn_finished", "diagnostic", {"stop_reason": "missing_slots"})
-            return
-
+        last_tool_result: ToolResult | None = None
+        last_sources: list[SourceDocument] = []
+        executed_tool_names: list[str] = []
+        last_retrieval_trace: RetrievalTrace | None = None
         for step in range(1, self._max_steps + 1):
+            yield context.event(
+                "runtime_step_started",
+                "diagnostic",
+                {"step_index": step, "max_steps": self._max_steps, "stage": session_state.current_stage},
+            )
+            step_context = RuntimeStepContext(
+                step_index=step,
+                max_steps=self._max_steps,
+                request=request,
+                session_state=session_state,
+                route=route,
+                last_tool_result=last_tool_result,
+                last_sources=last_sources,
+                pending_action=session_state.pending_action,
+                executed_tool_names=executed_tool_names,
+            )
+            decision = self._step_policy.decide_next_step(step_context)
+            yield context.event("runtime_step_decision", "diagnostic", decision.model_dump())
+
+            if decision.step_type == "ASK_USER":
+                yield context.transition("ROUTING", "CLARIFYING", decision.reason)
+                question = decision.question or self._build_clarifying_question(route)
+                yield from context.user_answer_events(question)
+                yield context.transition("CLARIFYING", "FINISHED", "等待用户补充信息")
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="missing_slots",
+                    final_answer=question,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event("turn_finished", "diagnostic", {"stop_reason": "missing_slots"})
+                return
+
+            if decision.step_type == "WAIT_CONFIRMATION":
+                answer = "当前已有待确认动作，请先确认或取消后再继续。"
+                yield from context.user_answer_events(answer)
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event("turn_finished", "diagnostic", {"stop_reason": "waiting_confirmation"})
+                return
+
+            if decision.step_type == "ANSWER_WITHOUT_TOOL":
+                yield context.transition("ROUTING", "ANSWERING", "无需工具，直接回答")
+                answer = self._answer_without_tool(request, route)
+                yield from context.user_answer_events(answer)
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="answered_without_tool",
+                    final_answer=answer,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event("turn_finished", "diagnostic", {"stop_reason": "answered_without_tool"})
+                return
+
+            if decision.step_type == "GENERATE_FINAL_ANSWER":
+                yield context.transition("ROUTING", "ANSWERING", decision.reason)
+                if last_tool_result is None:
+                    answer = decision.answer or self._answer_without_tool(request, route)
+                    stop_reason = "answered_without_tool"
+                elif last_tool_result.status != "success":
+                    answer = last_tool_result.user_visible_message or "工具调用失败，请稍后重试。"
+                    stop_reason = "tool_failed"
+                else:
+                    answer = self._answer_from_terminal_tool(request, route, last_tool_result, last_sources)
+                    stop_reason = "completed"
+                yield from context.user_answer_events(answer)
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    tool_result=last_tool_result,
+                    stop_reason=stop_reason,
+                    final_answer=answer,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event(
+                    "turn_finished",
+                    "diagnostic",
+                    {
+                        "stop_reason": stop_reason,
+                        "retrieval_trace": last_retrieval_trace.model_dump() if last_retrieval_trace else None,
+                    },
+                )
+                return
+
+            if decision.step_type in {"HANDOFF", "STOP"}:
+                answer = decision.handoff_reason or decision.reason or "当前请求需要人工处理或稍后重试。"
+                yield context.event(
+                    "handoff_required" if decision.step_type == "HANDOFF" else "runtime_step_finished",
+                    "diagnostic",
+                    {"reason": answer, "step_index": step},
+                )
+                yield from context.user_answer_events(answer)
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="handoff" if decision.step_type == "HANDOFF" else "max_steps",
+                    final_answer=answer,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event(
+                    "turn_finished",
+                    "diagnostic",
+                    {"stop_reason": "handoff" if decision.step_type == "HANDOFF" else "max_steps"},
+                )
+                return
+
             yield context.transition("ROUTING", "PLANNING_TOOL", f"第 {step} 步规划工具动作")
-            tool_call = self._plan_tool(request, route, session_state=session_state)
+            tool_call = decision.tool_call or self._plan_tool(request, route, session_state=session_state)
 
             if tool_call is None:
                 yield context.transition("PLANNING_TOOL", "ANSWERING", "无需工具，直接回答")
                 answer = self._answer_without_tool(request, route)
+                yield context.event(
+                    "runtime_step_decision",
+                    "diagnostic",
+                    RuntimeStepDecision(
+                        step_type="ANSWER_WITHOUT_TOOL",
+                        reason="当前路由无需工具或无法形成安全工具动作。",
+                        confidence=route.confidence,
+                        answer=answer,
+                    ).model_dump(),
+                )
                 yield from context.user_answer_events(answer)
                 yield context.transition("ANSWERING", "FINISHED", "已生成回答")
                 session_state = self._memory.update(
@@ -130,16 +254,68 @@ class ControlledAgentLoop:
                     request,
                     route=route,
                     stop_reason="answered_without_tool",
+                    final_answer=answer,
                 )
                 yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event("turn_finished", "diagnostic", {"stop_reason": "answered_without_tool"})
                 return
 
             yield context.event("tool_call_proposed", "diagnostic", tool_call.model_dump())
+            tool_specs = self._tool_registry.specs_for_categories(route.allowed_tool_categories)
+            proposal_check = self._action_policy.validate_tool_action(
+                route,
+                tool_call,
+                tool_specs,
+                session_state=session_state,
+                allow_unconfirmed=True,
+            )
+            if not proposal_check.allowed:
+                answer = f"当前工具动作未通过安全校验：{proposal_check.reason}"
+                yield context.event(
+                    "runtime_step_decision",
+                    "diagnostic",
+                    RuntimeStepDecision(
+                        step_type="HANDOFF",
+                        reason=proposal_check.reason,
+                        confidence=route.confidence,
+                        handoff_reason=proposal_check.reason,
+                    ).model_dump(),
+                )
+                yield context.event(
+                    "handoff_required",
+                    "diagnostic",
+                    {"reason": proposal_check.reason, "tool_call": tool_call.model_dump()},
+                )
+                yield from context.user_answer_events(answer)
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="tool_blocked",
+                    final_answer=answer,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event("turn_finished", "diagnostic", {"stop_reason": "tool_blocked"})
+                return
 
-            pending_action = self._build_pending_action(tool_call)
+            pending_action = (
+                self._build_pending_action(request, route, session_state, tool_call)
+                if decision.step_type == "PROPOSE_PENDING_ACTION" or tool_call.confirmation_required
+                else None
+            )
             if pending_action is not None:
                 yield context.transition("PLANNING_TOOL", "WAITING_CONFIRMATION", "工具动作需要用户确认")
+                yield context.event(
+                    "runtime_step_decision",
+                    "diagnostic",
+                    RuntimeStepDecision(
+                        step_type="PROPOSE_PENDING_ACTION",
+                        reason="工具动作涉及状态变化或需要用户确认。",
+                        confidence=route.confidence,
+                        tool_call=tool_call,
+                        pending_action=pending_action,
+                    ).model_dump(),
+                )
                 yield context.event(
                     "confirmation_required",
                     "user",
@@ -151,64 +327,76 @@ class ControlledAgentLoop:
                     route=route,
                     pending_action=pending_action,
                     stop_reason="waiting_confirmation",
+                    final_answer=pending_action.summary,
                 )
                 yield context.event("session_updated", "diagnostic", session_state.model_dump())
                 yield context.event("turn_finished", "diagnostic", {"stop_reason": "waiting_confirmation"})
                 return
 
             yield context.transition("PLANNING_TOOL", "EXECUTING_TOOL", "工具动作通过风险检查")
+            execution_check = self._action_policy.validate_tool_action(
+                route,
+                tool_call,
+                tool_specs,
+                session_state=session_state,
+            )
+            yield context.event(
+                "pending_action_validated",
+                "diagnostic",
+                {
+                    "allowed": execution_check.allowed,
+                    "reason": execution_check.reason,
+                    "tool_name": tool_call.tool_name,
+                },
+            )
+            if not execution_check.allowed:
+                answer = f"当前工具动作未通过执行前校验：{execution_check.reason}"
+                yield from context.user_answer_events(answer)
+                session_state = self._memory.update(
+                    session_state,
+                    request,
+                    route=route,
+                    stop_reason="tool_blocked",
+                    final_answer=answer,
+                )
+                yield context.event("session_updated", "diagnostic", session_state.model_dump())
+                yield context.event("turn_finished", "diagnostic", {"stop_reason": "tool_blocked"})
+                return
+            yield context.event(
+                "runtime_step_decision",
+                "diagnostic",
+                RuntimeStepDecision(
+                    step_type="EXECUTE_TOOL",
+                    reason=execution_check.reason,
+                    confidence=route.confidence,
+                    tool_call=tool_call,
+                ).model_dump(),
+            )
             yield context.event("tool_started", "diagnostic", {"tool_call": tool_call.model_dump()})
             tool_result, sources, retrieval_trace = self._execute_tool(request, route, tool_call)
+            executed_tool_names.append(tool_call.tool_name)
             yield context.event("tool_result", "diagnostic", tool_result.model_dump())
+            session_state = self._state_reducer.apply_tool_result(session_state, route, tool_result)
+            last_tool_result = tool_result
+            last_sources = sources
+            last_retrieval_trace = retrieval_trace
             yield context.transition("EXECUTING_TOOL", "OBSERVING_RESULT", "工具结果已返回")
-
-            if tool_result.status != "success":
-                yield context.transition("OBSERVING_RESULT", "ANSWERING", "工具失败，生成可理解提示")
-                yield from context.user_answer_events(tool_result.user_visible_message or "工具调用失败，请稍后重试。")
-                yield context.transition("ANSWERING", "FINISHED", "失败提示已返回")
-                session_state = self._memory.update(
-                    session_state,
-                    request,
-                    route=route,
-                    tool_result=tool_result,
-                    stop_reason="tool_failed",
-                )
-                yield context.event("session_updated", "diagnostic", session_state.model_dump())
-                yield context.event("turn_finished", "diagnostic", {"stop_reason": "tool_failed"})
-                return
-
-            if tool_result.terminal:
-                yield context.transition("OBSERVING_RESULT", "ANSWERING", "工具结果满足本轮收敛条件")
-                answer = self._answer_from_terminal_tool(request, route, tool_result, sources)
-                yield from context.user_answer_events(answer)
-                yield context.transition("ANSWERING", "FINISHED", "已基于工具结果生成回答")
-                session_state = self._memory.update(
-                    session_state,
-                    request,
-                    route=route,
-                    tool_result=tool_result,
-                    stop_reason="completed",
-                )
-                yield context.event("session_updated", "diagnostic", session_state.model_dump())
-                yield context.event(
-                    "turn_finished",
-                    "diagnostic",
-                    {
-                        "stop_reason": "completed",
-                        "retrieval_trace": retrieval_trace.model_dump() if retrieval_trace else None,
-                    },
-                )
-                return
-
             yield context.transition("OBSERVING_RESULT", "ROUTING", "工具结果要求继续下一步")
+            yield context.event(
+                "runtime_step_finished",
+                "diagnostic",
+                {"step_index": step, "stage": session_state.current_stage, "continue": True},
+            )
 
         yield context.transition("ROUTING", "REJECTED", "达到最大循环步数")
-        yield from context.user_answer_events("本轮未能在安全步数内完成，请补充信息或稍后重试。")
+        answer = "本轮未能在安全步数内完成，请补充信息或稍后重试。"
+        yield from context.user_answer_events(answer)
         session_state = self._memory.update(
             session_state,
             request,
             route=route,
             stop_reason="max_steps",
+            final_answer=answer,
         )
         yield context.event("session_updated", "diagnostic", session_state.model_dump())
         yield context.event("turn_finished", "diagnostic", {"stop_reason": "max_steps"})
@@ -217,6 +405,16 @@ class ControlledAgentLoop:
         started_at = perf_counter()
         events = list(self.run(request))
         duration_ms = (perf_counter() - started_at) * 1000
+        return self._build_chat_response(events, duration_ms)
+
+    def confirm(self, request: ConfirmActionRequest) -> ChatResponse:
+        started_at = perf_counter()
+        events = list(self.run_confirmation(request))
+        duration_ms = (perf_counter() - started_at) * 1000
+        return self._build_chat_response(events, duration_ms)
+
+    def _build_chat_response(self, events: list[AgentEvent], duration_ms: float) -> ChatResponse:
+        self.record_events(events)
         final_answer = self._extract_final_answer(events)
         route_decision = self._extract_route(events)
         tool_trace = self._extract_tool_trace(events)
@@ -271,6 +469,138 @@ class ControlledAgentLoop:
                 )
             ],
         )
+
+    def record_events(self, events: list[AgentEvent]) -> None:
+        session_state = self._extract_session_state(events)
+        if session_state is None:
+            return
+        for event in events:
+            self._memory.append_event(session_state.session_id, event)
+        stop_reason = self._extract_stop_reason(events)
+        if events:
+            self._memory.append_turn_summary(
+                session_state.session_id,
+                events[0].turn_id,
+                {
+                    "stop_reason": stop_reason,
+                    "event_count": len(events),
+                    "route": self._extract_route(events).model_dump() if self._extract_route(events) else None,
+                },
+            )
+
+    def run_confirmation(self, request: ConfirmActionRequest) -> Iterator[AgentEvent]:
+        context = _RunContext(turn_id=str(uuid4()))
+        session_state = self._memory.load(request.session_id)
+        yield context.event(
+            "turn_started",
+            "diagnostic",
+            {
+                "confirmation": {
+                    "session_id": request.session_id,
+                    "action_id": request.action_id,
+                    "confirmed": request.confirmed,
+                }
+            },
+        )
+        yield context.event("session_loaded", "diagnostic", session_state.model_dump())
+
+        action = session_state.pending_action
+        if action is None or action.action_id != request.action_id:
+            answer = "待确认动作不存在或已失效，请重新发起业务请求。"
+            yield from context.user_answer_events(answer)
+            yield context.event("turn_finished", "diagnostic", {"stop_reason": "confirmation_blocked"})
+            return
+
+        if not request.confirmed:
+            session_state = self._state_reducer.apply_confirmation(session_state, request.action_id, confirmed=False)
+            self._memory.save(session_state)
+            answer = "已取消本次业务动作，未执行任何工具。"
+            yield from context.user_answer_events(answer)
+            yield context.event("session_updated", "diagnostic", session_state.model_dump())
+            yield context.event("turn_finished", "diagnostic", {"stop_reason": "confirmation_cancelled"})
+            return
+
+        route = session_state.last_route
+        if route is None:
+            answer = "确认动作缺少原始路由快照，已阻断执行。"
+            yield from context.user_answer_events(answer)
+            yield context.event("turn_finished", "diagnostic", {"stop_reason": "confirmation_blocked"})
+            return
+
+        confirmed_state = self._state_reducer.apply_confirmation(
+            session_state,
+            request.action_id,
+            confirmed=True,
+        )
+        tool_call = action.tool_call
+        spec = self._tool_registry.spec_for_name(tool_call.tool_name)
+        if spec is None:
+            answer = f"确认动作引用的工具未注册：{tool_call.tool_name}"
+            yield from context.user_answer_events(answer)
+            yield context.event("turn_finished", "diagnostic", {"stop_reason": "confirmation_blocked"})
+            return
+
+        validation = self._action_policy.validate_tool_action(
+            route,
+            tool_call,
+            [spec],
+            session_state=confirmed_state,
+        )
+        yield context.event(
+            "pending_action_validated",
+            "diagnostic",
+            {
+                "allowed": validation.allowed,
+                "code": validation.code,
+                "reason": validation.reason,
+                "action_id": action.action_id,
+            },
+        )
+        if not validation.allowed:
+            blocked_state = confirmed_state.model_copy(
+                update={"pending_action": None, "confirmation_status": "cancelled"}
+            )
+            self._memory.save(blocked_state)
+            answer = f"确认动作未通过安全校验：{validation.code} {validation.reason}"
+            yield from context.user_answer_events(answer)
+            yield context.event("session_updated", "diagnostic", blocked_state.model_dump())
+            yield context.event("turn_finished", "diagnostic", {"stop_reason": "confirmation_blocked"})
+            return
+
+        yield context.event("tool_started", "diagnostic", {"tool_call": tool_call.model_dump()})
+        execution = self._tool_registry.execute(
+            ChatRequest(
+                user_message=request.user_message or action.summary,
+                session_id=request.session_id,
+                metadata=request.metadata,
+            ),
+            route,
+            tool_call,
+            session_state=confirmed_state,
+            confirmed_action=action,
+        )
+        tool_result = execution.result
+        yield context.event("tool_result", "diagnostic", tool_result.model_dump())
+
+        updated_state = self._state_reducer.apply_tool_result(confirmed_state, route, tool_result)
+        updated_state = updated_state.model_copy(update={"pending_action": None, "confirmation_status": "none"})
+        self._memory.save(updated_state)
+
+        if tool_result.status != "success":
+            answer = tool_result.user_visible_message or "确认动作执行失败，请稍后重试。"
+            stop_reason = "tool_failed"
+        else:
+            answer = self._answer_from_terminal_tool(
+                ChatRequest(user_message=request.user_message or action.summary, session_id=request.session_id),
+                route,
+                tool_result,
+                execution.sources,
+            )
+            stop_reason = "completed"
+
+        yield from context.user_answer_events(answer)
+        yield context.event("session_updated", "diagnostic", updated_state.model_dump())
+        yield context.event("turn_finished", "diagnostic", {"stop_reason": stop_reason})
 
     def _plan_tool(
         self,
@@ -402,7 +732,10 @@ class ControlledAgentLoop:
             tool_category=tool_category,
             arguments=arguments,
             risk_level=risk_level,
-            confirmation_required=requires_confirmation or route.confirmation_required,
+            confirmation_required=self._risk_policy.requires_confirmation(
+                risk_level,
+                requires_confirmation or route.confirmation_required,
+            ),
             reason=reason,
         )
 
@@ -434,7 +767,10 @@ class ControlledAgentLoop:
             tool_category=spec.category,
             arguments=arguments,
             risk_level=spec.risk_level,
-            confirmation_required=spec.requires_confirmation or route.confirmation_required,
+            confirmation_required=self._risk_policy.requires_confirmation(
+                spec.risk_level,
+                spec.requires_confirmation or route.confirmation_required,
+            ),
             reason="模型未返回有效工具规划，后端根据单一允许工具和已确认槽位生成兜底调用。",
         )
 
@@ -455,22 +791,26 @@ class ControlledAgentLoop:
             return request.metadata[slot_name]
         return None
 
-    def _build_pending_action(self, tool_call: ToolCall) -> PendingAction | None:
+    def _build_pending_action(
+        self,
+        request: ChatRequest,
+        route: RouteDecision,
+        session_state: SessionStateSnapshot,
+        tool_call: ToolCall,
+    ) -> PendingAction | None:
         if not tool_call.confirmation_required:
             return None
 
-        return PendingAction(
-            action_id=str(uuid4()),
+        spec = self._tool_registry.spec_for_name(tool_call.tool_name)
+        if spec is None:
+            return None
+
+        return self._pending_action_builder.build(
+            request=request,
+            route=route,
+            state=session_state,
             tool_call=tool_call,
-            title="确认创建贷款申请",
-            summary="该操作将创建贷款申请草稿，后续需要企业授权后才能提交。",
-            confirm_label="确认创建",
-            cancel_label="取消",
-            details=[
-                {"label": "企业", "value": str(tool_call.arguments.get("company_name", ""))},
-                {"label": "产品", "value": str(tool_call.arguments.get("product_name", ""))},
-                {"label": "动作", "value": "创建申请草稿"},
-            ],
+            spec=spec,
         )
 
     def _execute_tool(
@@ -501,7 +841,8 @@ class ControlledAgentLoop:
     ) -> str:
         if tool_result.user_visible_message and tool_result.business_status in {"PARTIAL_DATA", "NOT_FOUND"}:
             return tool_result.user_visible_message
-        return self._summarize_tool_result(request, route, tool_result, sources)
+        answer = self._summarize_tool_result(request, route, tool_result, sources)
+        return self._evidence_policy.attach_citations(answer, sources)
 
     def _answer_without_tool(self, request: ChatRequest, route: RouteDecision) -> str:
         skill_section = self._build_skill_prompt(route.scene, "direct_answer")
