@@ -413,6 +413,8 @@ function StatePanel({ sessionState, states }: { sessionState: SessionStateSnapsh
           <Metric label="Session" value={sessionState.session_id} />
           <Metric label="业务场景" value={sessionState.active_scene ?? "无"} />
           <Metric label="业务能力" value={sessionState.active_capability_id ?? "无"} />
+          <Metric label="业务流程" value={sessionState.active_flow ?? "无"} />
+          <Metric label="当前阶段" value={sessionState.current_stage ?? "无"} />
           <Metric label="确认状态" value={sessionState.confirmation_status} />
           <Metric label="待补字段" value={sessionState.awaiting_slots.join(", ") || "无"} />
           <Metric label="会话轮次" value={String(sessionState.turn_count)} />
@@ -420,6 +422,12 @@ function StatePanel({ sessionState, states }: { sessionState: SessionStateSnapsh
             <span>已确认槽位</span>
             <pre>{JSON.stringify(sessionState.confirmed_slots, null, 2)}</pre>
           </div>
+          {sessionState.recent_turns.length > 0 && (
+            <div className="tool-list">
+              <span>最近会话</span>
+              <pre>{JSON.stringify(sessionState.recent_turns, null, 2)}</pre>
+            </div>
+          )}
           {sessionState.short_summary && <p className="reason">{sessionState.short_summary}</p>}
         </>
       )}

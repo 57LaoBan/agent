@@ -1,0 +1,13 @@
+{
+  "case_id": "credit_amount_success",
+  "turns": [
+    {
+      "user": "杭州示例科技有限公司能贷多少钱？",
+      "expect": {
+        "stop_reason": "completed",
+        "business_status": "CREDIT_AMOUNT_FOUND",
+        "tool_executed": "query_credit_amount"
+      }
+    }
+  ]
+}

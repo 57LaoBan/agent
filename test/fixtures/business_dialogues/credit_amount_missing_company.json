@@ -1,0 +1,12 @@
+{
+  "case_id": "credit_amount_missing_company",
+  "turns": [
+    {
+      "user": "我能贷多少钱？",
+      "expect": {
+        "stop_reason": "missing_slots",
+        "missing_slots": ["company_name"]
+      }
+    }
+  ]
+}

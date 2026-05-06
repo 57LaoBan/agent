@@ -16,10 +16,16 @@ class JsonRouterModel:
     def __init__(self, content: str) -> None:
         self.content = content
         self.calls = 0
+        self.response_formats = []
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: dict[str, object] | None = None,
+    ) -> str:
         self.calls += 1
         self.messages = messages
+        self.response_formats.append(response_format)
         return self.content
 
 
@@ -46,6 +52,7 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(route.allowed_tools, ["query_credit_amount"])
         self.assertEqual(route.route_source, "model")
         self.assertEqual(model.calls, 1)
+        self.assertEqual(model.response_formats[0], {"type": "json_object"})
 
     def test_low_information_input_is_clarified_without_model_or_rag(self) -> None:
         model = JsonRouterModel(

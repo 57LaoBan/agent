@@ -17,9 +17,24 @@ from xinyidai_agent.tools.registry import ToolRegistry, default_tool_registry  #
 
 
 class FakeModel:
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: dict[str, object] | None = None,
+    ) -> str:
         system = messages[0]["content"] if messages else ""
+        user = messages[-1]["content"] if messages else ""
         if "意图识别器" in system:
+            if "我要申请" in user:
+                return """
+                {
+                  "scene": "LOAN_APPLY",
+                  "raw_intent": "start_loan_application",
+                  "confidence": 0.88,
+                  "filled_slots": {"product_name": "小微税贷"},
+                  "route_reason": "测试模型识别为贷款申请。"
+                }
+                """
             return """
             {
               "scene": "KNOWLEDGE_QA",
@@ -112,7 +127,8 @@ class ChatContractTest(unittest.TestCase):
         response = loop.answer(ChatRequest(user_message="信易贷适合哪些企业？", top_k=3))
         payload = response.to_dict()
 
-        self.assertEqual(payload["answer"], "这是一个测试回答。")
+        self.assertIn("这是一个测试回答。", payload["answer"])
+        self.assertIn("参考来源：测试政策", payload["answer"])
         self.assertEqual(payload["sources"][0]["source_id"], "policy-1")
         self.assertEqual(payload["retrieval_trace"]["top_k"], 3)
         self.assertEqual(payload["tool_trace"][0]["tool_name"], "rag_search")

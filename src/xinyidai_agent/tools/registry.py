@@ -4,13 +4,17 @@ from collections.abc import Iterable
 
 from xinyidai_agent.protocol import (
     ChatRequest,
+    PendingAction,
     RouteDecision,
+    SessionStateSnapshot,
     ToolCall,
     ToolCategory,
     ToolResult,
     ToolResultEnvelope,
 )
+from xinyidai_agent.policies import RiskPolicy
 from xinyidai_agent.rag import Retriever
+from xinyidai_agent.router.action_validator import PendingActionValidator
 from xinyidai_agent.tools.base import AgentTool, SlotSpec, ToolExecution, ToolSpec
 from xinyidai_agent.tools.mock_credit import MockCreditAmountTool
 from xinyidai_agent.tools.rag_search import RagSearchTool
@@ -20,6 +24,8 @@ class ToolRegistry:
     def __init__(self, tools: Iterable[AgentTool]) -> None:
         tool_list = list(tools)
         self._tools = {tool.name: tool for tool in tool_list}
+        self._pending_action_validator = PendingActionValidator()
+        self._risk_policy = RiskPolicy()
         self._tools_by_category: dict[ToolCategory, list[AgentTool]] = {}
         for tool in tool_list:
             self._tools_by_category.setdefault(tool.category, []).append(tool)
@@ -36,11 +42,18 @@ class ToolRegistry:
             specs.extend(tool.spec() for tool in self._tools_by_category.get(category, []))
         return specs
 
+    def spec_for_name(self, name: str) -> ToolSpec | None:
+        tool = self._tools.get(name)
+        return tool.spec() if tool is not None else None
+
     def execute(
         self,
         request: ChatRequest,
         route: RouteDecision,
         tool_call: ToolCall,
+        session_state: SessionStateSnapshot | None = None,
+        confirmed_action: PendingAction | None = None,
+        pending_action_validated: bool = False,
     ) -> ToolExecution:
         tool = self._tools.get(tool_call.tool_name)
         if tool is None:
@@ -106,6 +119,38 @@ class ToolRegistry:
             )
             return ToolExecution(result=result)
 
+        confirmation_required = self._risk_policy.requires_confirmation(
+            spec.risk_level,
+            spec.requires_confirmation or route.confirmation_required or tool_call.confirmation_required,
+        )
+        if confirmation_required and not pending_action_validated:
+            action = confirmed_action or (session_state.pending_action if session_state else None)
+            if session_state is None or action is None:
+                result = self._blocked_result(
+                    tool_call,
+                    tool.category,
+                    "高风险工具缺少已确认的 pending_action 快照。",
+                    "ToolRegistry fail-closed：未提供确认快照，拒绝执行状态变化工具。",
+                    code=403,
+                )
+                return ToolExecution(result=result)
+            validation = self._pending_action_validator.validate_pending_action_snapshot(
+                state=session_state,
+                route=route,
+                action=action,
+                tool_call=tool_call,
+                spec=spec,
+            )
+            if not validation.allowed:
+                result = self._blocked_result(
+                    tool_call,
+                    tool.category,
+                    f"pending_action 校验失败：{validation.code} {validation.reason}",
+                    "ToolRegistry fail-closed：确认快照与当前状态不一致。",
+                    code=403,
+                )
+                return ToolExecution(result=result)
+
         execution = tool.execute(request, route, tool_call)
         output_errors = self._validate_slots(execution.result.output, spec.output_slots)
         if output_errors:
@@ -137,7 +182,11 @@ class ToolRegistry:
         if not route.allowed_tools and not route.allowed_tool_categories:
             return True
 
-        return tool.name in route.allowed_tools or tool.category in route.allowed_tool_categories
+        name_allowed = not route.allowed_tools or tool.name in route.allowed_tools
+        category_allowed = (
+            not route.allowed_tool_categories or tool.category in route.allowed_tool_categories
+        )
+        return name_allowed and category_allowed
 
     def _validate_slots(self, values: dict[str, object], slots: list[SlotSpec]) -> list[str]:
         errors: list[str] = []
@@ -182,6 +231,7 @@ class ToolRegistry:
         tool_category: ToolCategory,
         error_message: str,
         model_observation: str,
+        code: int = 422,
     ) -> ToolResult:
         return ToolResult(
             tool_call_id=tool_call.tool_call_id,
@@ -191,12 +241,12 @@ class ToolRegistry:
             envelope=ToolResultEnvelope(
                 success=False,
                 status="TOOL_BLOCKED",
-                code=422,
+                code=code,
                 message=error_message,
             ),
             error_message=error_message,
             business_status="TOOL_BLOCKED",
-            code=422,
+            code=code,
             message=error_message,
             terminal=True,
             user_visible_message="当前请求不能执行这个工具动作。",

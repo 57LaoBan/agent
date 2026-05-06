@@ -15,12 +15,12 @@ from xinyidai_agent.memory import (
     PostgresConversationStore,
     PostgresSessionStore,
 )
-from xinyidai_agent.protocol import AgentEvent, ChatRequest, ChatResponse
+from xinyidai_agent.protocol import AgentEvent, ChatRequest, ChatResponse, ConfirmActionRequest
 from xinyidai_agent.runtime import ControlledAgentLoop
 
 
 def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
-    """创建 FastAPI 应用，并暴露聊天和会话恢复接口。"""
+    """创建 FastAPI 应用，并暴露聊天、确认和会话恢复接口。"""
     app = FastAPI(title="信易贷聊天 Agent", version="0.1.0")
     agent_loop = loop or _build_default_loop()
     app.add_middleware(
@@ -33,16 +33,24 @@ def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
+        """健康检查接口。"""
         return {"status": "ok"}
 
     @app.post("/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
+        """执行一轮普通聊天。"""
         return agent_loop.answer(request)
+
+    @app.post("/chat/confirm", response_model=ChatResponse)
+    def chat_confirm(request: ConfirmActionRequest) -> ChatResponse:
+        """确认或取消上一轮生成的待确认业务动作。"""
+        return agent_loop.confirm(request)
 
     @app.post("/chat/stream")
     def chat_stream(request: ChatRequest) -> StreamingResponse:
+        """执行一轮流式聊天，并在流结束后记录完整事件。"""
         return StreamingResponse(
-            _to_sse(_stream_agent_events(agent_loop, request)),
+            _to_sse(agent_loop.run(request), agent_loop),
             media_type="text/event-stream",
         )
 
@@ -86,17 +94,13 @@ def _build_default_loop() -> ControlledAgentLoop:
     )
 
 
-def _to_sse(events: Iterator[AgentEvent]) -> Iterator[str]:
+def _to_sse(events: Iterator[AgentEvent], loop: ControlledAgentLoop | None = None) -> Iterator[str]:
     """把 Agent 事件转换成 Server-Sent Events 文本流。"""
+    emitted: list[AgentEvent] = []
     for event in events:
+        emitted.append(event)
         payload = event.model_dump_json()
         yield f"event: {event.event_type}\n"
         yield f"data: {payload}\n\n"
-
-
-def _stream_agent_events(agent_loop: object, request: ChatRequest) -> Iterator[AgentEvent]:
-    """兼容测试替身和真实 Agent 的流式事件入口。"""
-    if hasattr(agent_loop, "stream"):
-        yield from agent_loop.stream(request)  # type: ignore[attr-defined]
-        return
-    yield from agent_loop.run(request)  # type: ignore[attr-defined]
+    if loop is not None and hasattr(loop, "record_events"):
+        loop.record_events(emitted)

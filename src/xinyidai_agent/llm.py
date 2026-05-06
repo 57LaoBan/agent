@@ -1,19 +1,30 @@
 from __future__ import annotations
 
-from typing import Protocol
-
-from openai import OpenAI
+from typing import Any, Protocol
 
 from xinyidai_agent.config import AgentConfig
 
 
+ResponseFormat = dict[str, Any]
+JSON_OBJECT_RESPONSE_FORMAT: ResponseFormat = {"type": "json_object"}
+
+
 class ChatModel(Protocol):
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: ResponseFormat | None = None,
+    ) -> str:
         """根据消息列表生成回答。"""
 
 
 class OpenAICompatibleChatModel:
     def __init__(self, config: AgentConfig) -> None:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("缺少 openai 依赖，无法创建 OpenAI 兼容模型客户端。") from exc
+
         if not config.llm_api_key:
             raise RuntimeError("缺少 LLM_API_KEY 或 DASHSCOPE_API_KEY。")
 
@@ -24,9 +35,19 @@ class OpenAICompatibleChatModel:
             timeout=config.request_timeout_seconds,
         )
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        response_format: ResponseFormat | None = None,
+    ) -> str:
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+
         completion = self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
+            **kwargs,
         )
         return completion.choices[0].message.content or ""

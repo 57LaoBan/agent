@@ -27,7 +27,7 @@ from xinyidai_agent.runtime import ControlledAgentLoop  # noqa: E402
 class FakeModel:
     """用于会话持久化测试的确定性模型替身。"""
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(self, messages: list[dict[str, str]], **_: object) -> str:
         """根据系统提示返回系统工具空操作或固定回答。"""
         system = messages[0]["content"] if messages else ""
         if "update_session_state" in system:
