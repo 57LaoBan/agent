@@ -6,7 +6,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from xinyidai_agent.llm import ChatModel
-from xinyidai_agent.memory import MemoryManager
+from xinyidai_agent.memory import ConversationStore, MemoryManager
 from xinyidai_agent.protocol import (
     AgentEvent,
     AgentEventType,
@@ -47,16 +47,24 @@ class ControlledAgentLoop:
         router: IntentRouter | None = None,
         tool_registry: ToolRegistry | None = None,
         memory_manager: MemoryManager | None = None,
+        conversation_store: ConversationStore | None = None,
         skill_registry: SkillRegistry | None = None,
         max_steps: int = 3,
     ) -> None:
+        """初始化受控 Agent 循环及其可选的会话持久化组件。"""
         self._model = model
         self._router = router or ControlledIntentRouter(model=model)
         self._tool_registry = tool_registry or default_tool_registry()
         self._memory = memory_manager or MemoryManager()
+        self._conversation_store = conversation_store
         self._skills = skill_registry or SkillRegistry()
         self._session_memory_tool = SessionMemorySystemTool()
         self._max_steps = max_steps
+
+    @property
+    def conversation_store(self) -> ConversationStore | None:
+        """返回当前 Agent 使用的会话记录存储。"""
+        return self._conversation_store
 
     def run(self, request: ChatRequest) -> Iterator[AgentEvent]:
         context = _RunContext(turn_id=str(uuid4()))
@@ -213,9 +221,26 @@ class ControlledAgentLoop:
         yield context.event("session_updated", "diagnostic", session_state.model_dump())
         yield context.event("turn_finished", "diagnostic", {"stop_reason": "max_steps"})
 
+    def stream(self, request: ChatRequest) -> Iterator[AgentEvent]:
+        """执行一轮对话，并把用户消息、运行事件和助手答案同步落库。"""
+        request = self._prepare_persisted_request(request)
+        if self._conversation_store is None:
+            yield from self.run(request)
+            return
+
+        self._record_user_message(request)
+        try:
+            for event in self.run(request):
+                self._record_runtime_event(request, event)
+                yield event
+        except Exception as exc:
+            self._record_runtime_error(request, exc)
+            raise
+
     def answer(self, request: ChatRequest) -> ChatResponse:
+        """执行一轮非流式对话并返回完整响应。"""
         started_at = perf_counter()
-        events = list(self.run(request))
+        events = list(self.stream(request))
         duration_ms = (perf_counter() - started_at) * 1000
         final_answer = self._extract_final_answer(events)
         route_decision = self._extract_route(events)
@@ -270,6 +295,83 @@ class ControlledAgentLoop:
                     },
                 )
             ],
+        )
+
+    def _prepare_persisted_request(self, request: ChatRequest) -> ChatRequest:
+        """为需要持久化的请求补齐会话 ID 和请求 ID。"""
+        if self._conversation_store is None:
+            return request
+        metadata = dict(request.metadata)
+        metadata.setdefault("request_id", str(uuid4()))
+        return request.model_copy(
+            update={
+                "session_id": request.session_id or str(uuid4()),
+                "metadata": metadata,
+            }
+        )
+
+    def _record_user_message(self, request: ChatRequest) -> None:
+        """在运行 Agent 前先落库用户原始消息。"""
+        if self._conversation_store is None or request.session_id is None:
+            return
+        request_id = _request_id(request)
+        self._conversation_store.ensure_session(
+            request.session_id,
+            metadata={
+                "entrypoint": "chat_window",
+                "request_id": request_id,
+            },
+        )
+        self._conversation_store.append_message(
+            session_id=request.session_id,
+            role="user",
+            content=request.user_message,
+            payload={
+                "top_k": request.top_k,
+                "metadata": request.metadata,
+            },
+            request_id=request_id,
+        )
+
+    def _record_runtime_event(self, request: ChatRequest, event: AgentEvent) -> None:
+        """把运行事件写入审计表，并把最终答案写入聊天记录表。"""
+        if self._conversation_store is None or request.session_id is None:
+            return
+        request_id = _request_id(request)
+        self._conversation_store.append_audit_event(
+            session_id=request.session_id,
+            event=event,
+            request_id=request_id,
+        )
+        if event.event_type == "final_answer":
+            answer = str(event.payload.get("answer", ""))
+            if answer:
+                self._conversation_store.append_message(
+                    session_id=request.session_id,
+                    role="assistant",
+                    content=answer,
+                    payload={"event": event.model_dump(mode="json")},
+                    event_type=event.event_type,
+                    request_id=request_id,
+                    turn_id=event.turn_id,
+                )
+
+    def _record_runtime_error(self, request: ChatRequest, exc: Exception) -> None:
+        """当运行异常时写入审计错误事件，保证失败也可追溯。"""
+        if self._conversation_store is None or request.session_id is None:
+            return
+        event = AgentEvent(
+            turn_id=str(uuid4()),
+            sequence=0,
+            event_type="error",
+            visibility="diagnostic",
+            timestamp=datetime.now(UTC).isoformat(),
+            payload={"error_type": exc.__class__.__name__, "error": str(exc)},
+        )
+        self._conversation_store.append_audit_event(
+            session_id=request.session_id,
+            event=event,
+            request_id=_request_id(request),
         )
 
     def _plan_tool(
@@ -691,6 +793,12 @@ class ControlledAgentLoop:
         if stop_reason in {"completed", "answered_without_tool"}:
             return "done"
         return "gather_evidence"
+
+
+def _request_id(request: ChatRequest) -> str | None:
+    """从请求 metadata 中读取审计请求 ID。"""
+    value = request.metadata.get("request_id")
+    return str(value) if value else None
 
 
 class _RunContext:

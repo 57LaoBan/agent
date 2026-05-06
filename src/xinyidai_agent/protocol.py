@@ -1,3 +1,5 @@
+"""Agent 对外协议和内部运行事件的数据模型定义。"""
+
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -75,6 +77,8 @@ ConfirmationStatus = Literal["none", "waiting", "confirmed", "cancelled"]
 
 
 class AuditInfo(BaseModel):
+    """审计信息，用于标识一次请求、动作和策略判定结果。"""
+
     model_config = ConfigDict(frozen=True)
 
     request_id: str | None = None
@@ -87,6 +91,8 @@ class AuditInfo(BaseModel):
 
 
 class AgentAction(BaseModel):
+    """Agent 返回给前端或调用方的可执行业务动作。"""
+
     model_config = ConfigDict(frozen=True)
 
     type: ActionType
@@ -102,6 +108,8 @@ class AgentAction(BaseModel):
 
 
 class ToolNextStep(BaseModel):
+    """工具执行后的下一步建议，供运行时决定继续、询问或停止。"""
+
     model_config = ConfigDict(frozen=True)
 
     type: NextStepType = "none"
@@ -113,6 +121,8 @@ class ToolNextStep(BaseModel):
 
 
 class EvidenceState(BaseModel):
+    """当前回答所依赖的证据准备状态。"""
+
     model_config = ConfigDict(frozen=True)
 
     ready: bool = False
@@ -122,6 +132,8 @@ class EvidenceState(BaseModel):
 
 
 class ModelDecision(BaseModel):
+    """运行时整理后的模型决策结果，用于解释本轮是否应结束。"""
+
     model_config = ConfigDict(frozen=True)
 
     should_finish: bool = False
@@ -136,6 +148,8 @@ class ModelDecision(BaseModel):
 
 
 class PerformanceStage(BaseModel):
+    """单个运行阶段的耗时统计。"""
+
     model_config = ConfigDict(frozen=True)
 
     name: str
@@ -146,6 +160,8 @@ class PerformanceStage(BaseModel):
 
 
 class PerformanceSummary(BaseModel):
+    """一次请求的整体性能统计。"""
+
     model_config = ConfigDict(frozen=True)
 
     total_ms: float = 0.0
@@ -153,6 +169,8 @@ class PerformanceSummary(BaseModel):
 
 
 class SourceDocument(BaseModel):
+    """RAG 或工具返回的证据文档。"""
+
     model_config = ConfigDict(frozen=True)
 
     source_id: str
@@ -165,6 +183,8 @@ class SourceDocument(BaseModel):
 
 
 class RetrievalTrace(BaseModel):
+    """检索链路追踪信息，用于排查召回、重排和结果数量。"""
+
     model_config = ConfigDict(frozen=True)
 
     query: str
@@ -175,6 +195,8 @@ class RetrievalTrace(BaseModel):
 
 
 class RouteDecision(BaseModel):
+    """意图路由结果，描述当前业务场景、槽位和允许的工具范围。"""
+
     model_config = ConfigDict(frozen=True)
 
     scene: RouteScene
@@ -197,6 +219,8 @@ class RouteDecision(BaseModel):
 
 
 class ToolCall(BaseModel):
+    """运行时规划出的单次工具调用。"""
+
     model_config = ConfigDict(frozen=True)
 
     tool_call_id: str
@@ -209,6 +233,8 @@ class ToolCall(BaseModel):
 
 
 class ActionLink(BaseModel):
+    """返回给前端的业务链接，如申请、授权或状态查询入口。"""
+
     model_config = ConfigDict(frozen=True)
 
     link_type: Literal["apply", "authorization", "status", "other"]
@@ -218,6 +244,8 @@ class ActionLink(BaseModel):
 
 
 class ToolResultEnvelope(BaseModel):
+    """工具结果的标准业务信封，统一状态码、数据和后续动作。"""
+
     model_config = ConfigDict(frozen=True)
 
     success: bool
@@ -231,6 +259,8 @@ class ToolResultEnvelope(BaseModel):
 
 
 class PendingAction(BaseModel):
+    """等待用户确认的高风险或状态变更动作。"""
+
     model_config = ConfigDict(frozen=True)
 
     action_id: str
@@ -243,6 +273,8 @@ class PendingAction(BaseModel):
 
 
 class SessionToolResult(BaseModel):
+    """会话状态中缓存的最近一次工具结果摘要。"""
+
     model_config = ConfigDict(frozen=True)
 
     tool_name: str
@@ -252,6 +284,8 @@ class SessionToolResult(BaseModel):
 
 
 class SessionStateSnapshot(BaseModel):
+    """单个聊天窗口的短期结构化状态快照。"""
+
     model_config = ConfigDict(frozen=True)
 
     session_id: str
@@ -273,6 +307,8 @@ class SessionStateSnapshot(BaseModel):
 
 
 class ToolResult(BaseModel):
+    """工具执行结果，包含技术状态、业务状态、可见消息和审计信息。"""
+
     model_config = ConfigDict(frozen=True)
 
     tool_call_id: str
@@ -298,6 +334,8 @@ class ToolResult(BaseModel):
 
 
 class StateTransition(BaseModel):
+    """Agent 状态机的一次状态迁移记录。"""
+
     model_config = ConfigDict(frozen=True)
 
     from_state: AgentState
@@ -306,6 +344,8 @@ class StateTransition(BaseModel):
 
 
 class AgentEvent(BaseModel):
+    """Agent 运行过程中的事件，既可用于流式输出，也可用于审计追踪。"""
+
     model_config = ConfigDict(frozen=True)
 
     turn_id: str
@@ -317,6 +357,8 @@ class AgentEvent(BaseModel):
 
 
 class DiagnosticEvent(BaseModel):
+    """非流式响应中的诊断信息摘要。"""
+
     model_config = ConfigDict(frozen=True)
 
     name: str
@@ -324,6 +366,8 @@ class DiagnosticEvent(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    """网页端或调用方发起的一次聊天请求。"""
+
     model_config = ConfigDict(frozen=True)
 
     user_message: str
@@ -333,6 +377,8 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    """Agent 对一次聊天请求的完整结构化响应。"""
+
     model_config = ConfigDict(frozen=True)
 
     protocol_version: str = PROTOCOL_VERSION
@@ -356,4 +402,5 @@ class ChatResponse(BaseModel):
     error_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """将响应转换为普通字典，兼容旧调用方。"""
         return self.model_dump()

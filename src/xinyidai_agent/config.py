@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -45,3 +46,52 @@ class AgentConfig:
             llm_model=model,
             request_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
         )
+
+
+@dataclass(frozen=True)
+class SessionStorageConfig:
+    """会话持久化存储配置。"""
+
+    backend: str = "postgres"
+    dsn: str = "postgresql://xinyidai:xinyidai123@localhost:5432/xinyidai"
+
+    @classmethod
+    def from_env(cls) -> "SessionStorageConfig":
+        """从环境变量读取会话存储配置，并兼容 localhost:5432 形式的输入。"""
+        backend = os.getenv("SESSION_STORAGE_BACKEND", "postgres").strip().lower()
+        raw_dsn = (
+            os.getenv("SESSION_DB_DSN")
+            or os.getenv("SESSION_DATABASE_URL")
+            or os.getenv("DATABASE_URL")
+            or ""
+        ).strip()
+        if raw_dsn:
+            dsn = _normalize_postgres_dsn(raw_dsn)
+        else:
+            dsn = _build_default_postgres_dsn()
+        return cls(backend=backend, dsn=dsn)
+
+
+def _build_default_postgres_dsn() -> str:
+    """根据本地 Docker 默认参数拼出 PostgreSQL DSN。"""
+    host = os.getenv("SESSION_DB_HOST", "localhost")
+    port = os.getenv("SESSION_DB_PORT", "5432")
+    database = os.getenv("SESSION_DB_NAME", "xinyidai")
+    user = os.getenv("SESSION_DB_USER", "xinyidai")
+    password = os.getenv("SESSION_DB_PASSWORD", "xinyidai123")
+    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+
+
+def _normalize_postgres_dsn(raw_dsn: str) -> str:
+    """把 http://localhost:5432/ 这类输入转换为 psycopg 可用的 PostgreSQL DSN。"""
+    if raw_dsn.startswith(("postgresql://", "postgres://")):
+        return raw_dsn
+    if raw_dsn.startswith(("http://", "https://")):
+        parsed = urlparse(raw_dsn)
+        host = parsed.hostname or os.getenv("SESSION_DB_HOST", "localhost")
+        port = parsed.port or int(os.getenv("SESSION_DB_PORT", "5432"))
+        database = parsed.path.strip("/") or os.getenv("SESSION_DB_NAME", "xinyidai")
+        user = os.getenv("SESSION_DB_USER", "xinyidai")
+        password = os.getenv("SESSION_DB_PASSWORD", "xinyidai123")
+        return f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    return raw_dsn
