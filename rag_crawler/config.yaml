@@ -1,0 +1,72 @@
+output_dir: "../rag_corpus"
+request_delay_seconds: 2
+
+# 代理设置
+use_proxy: false  # 是否使用代理（false = 不使用代理）
+# proxy_url: "http://127.0.0.1:7890"  # 如果需要使用代理，取消注释并设置
+
+# 切片配置（暂时禁用，后续用专门的切片模型）
+enable_chunking: false
+chunk_size: 800
+chunk_overlap: 100
+
+sources:
+  # ===== 可访问的政府网站（已验证）=====
+
+  - name: "gov_cn_policy"
+    enabled: true
+    category: "government_policy"
+    list_url: "https://www.gov.cn/zhengce/"
+    list_selector: "a[href*='/zhengce/content/']"
+    title_selector: "h1, .article-title, .pages_title"
+    content_selector: ".pages_content, .article-content"
+    max_pages: 20
+
+  - name: "miit_news"
+    enabled: true
+    category: "industry_policy"
+    list_url: "https://www.miit.gov.cn/"
+    list_selector: "a[href*='/xwfb/'], a[href*='/art/']"
+    title_selector: "h1, .article-title, .title"
+    content_selector: ".article-content, .TRS_Editor, .content"
+    max_pages: 20
+
+  - name: "ndrc_news"
+    enabled: true
+    category: "development_policy"
+    list_url: "https://www.ndrc.gov.cn/"
+    list_selector: "a[href*='/fzggw/'], a[href*='/t202']"
+    title_selector: "h1, .title, .article-title"
+    content_selector: ".TRS_Editor, .content, .article-content"
+    max_pages: 20
+
+  # ===== 暂时无法访问的数据源 =====
+
+  - name: "credit_china"
+    enabled: false
+    category: "enterprise_credit"
+    list_url: "https://www.creditchina.gov.cn/"
+    list_selector: "a[href*='/xinyongxinxi/']"
+    title_selector: "h1, .title"
+    content_selector: ".content"
+    max_pages: 10
+
+  - name: "pbc_policy"
+    enabled: false
+    category: "banking_policy"
+    list_url: "http://www.pbc.gov.cn/goutongjiaoliu/113456/113469/index.html"
+    list_selector: "a[href*='/goutongjiaoliu/113456/113469/202']"
+    title_selector: "h1, .title"
+    content_selector: ".content, #zoom"
+    max_pages: 10
+
+  # ===== 暂时禁用的数据源 =====
+
+  - name: "pbc_policy"
+    enabled: false
+    category: "banking_policy"
+    list_url: "http://www.pbc.gov.cn/goutongjiaoliu/113456/113469/index.html"
+    list_selector: "a[href*='/goutongjiaoliu/113456/113469/202']"
+    title_selector: "h1, .title, .article_title"
+    content_selector: ".content, .article_content, #zoom"
+    max_pages: 5

@@ -15,3 +15,10 @@ build/
 *.egg-info/
 web/node_modules/
 web/dist/
+
+# RAG 爬虫数据和日志
+rag_corpus/raw/
+rag_corpus/cleaned/
+rag_corpus/chunks/
+rag_corpus/db/
+rag_corpus/logs/
