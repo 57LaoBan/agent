@@ -1,0 +1,36 @@
+﻿
+>>> 小微税贷的利率是多少？
+  raw : scene=DATA_QUERY intent=查询小微税贷产品的具体利率数值 confidence=0.95 reason=用户询问具体产品（小微税贷）的利率数值，答案应为一个或多个具体数值，属于产品维度参数查询，符合 PRODUCT_TERMS_QUERY 定义。
+  final: capability=product.terms.read scene=DATA_QUERY intent=PRODUCT_TERMS_QUERY allowed_tools=['query_product_terms'] should_call_tool=True
+
+>>> 小微税贷的额度上限是多少
+  raw : scene=DATA_QUERY intent=None confidence=0.95 reason=用户询问小微税贷这一具体产品的额度上限，属于产品维度的具体参数查询，答案应为一个数值或区间，符合 PRODUCT_TERMS_QUERY 定义。
+  final: capability=product.terms.read scene=DATA_QUERY intent=PRODUCT_TERMS_QUERY allowed_tools=['query_product_terms'] should_call_tool=True
+
+>>> 信易贷产品的期限多长
+  raw : scene=DATA_QUERY intent=None confidence=0.95 reason=用户询问信易贷产品的期限，属于查询产品维度的具体参数（如期限），答案应为具体数值或区间，符合 PRODUCT_TERMS_QUERY 定义。
+  final: capability=product.terms.read scene=DATA_QUERY intent=PRODUCT_TERMS_QUERY allowed_tools=['query_product_terms'] should_call_tool=True
+
+>>> 查一下 ABC 公司的授信额度
+  raw : scene=DATA_QUERY intent=None confidence=0.95 reason=用户明确要求查询具体企业（ABC 公司）的授信额度，属于企业维度的具体数值查询，匹配 CREDIT_LIMIT_QUERY 意图。
+  final: capability=credit.limit.read scene=DATA_QUERY intent=CREDIT_LIMIT_QUERY allowed_tools=['query_credit_amount'] should_call_tool=True
+
+>>> 信易贷的准入条件是什么
+  raw : scene=KNOWLEDGE_QA intent=None confidence=0.95 reason=用户询问信易贷的准入条件，属于政策性、规则性的概念解释类问题，答案应为文字描述或清单，符合 KNOWLEDGE_QA 场景下的 POLICY_OR_PRODUCT_QA 意图。
+  final: capability=knowledge.policy.read scene=KNOWLEDGE_QA intent=POLICY_OR_PRODUCT_QA allowed_tools=['rag_search'] should_call_tool=True
+
+>>> 高风险标签都包括哪些情况
+  raw : scene=KNOWLEDGE_QA intent=询问高风险标签的定义和涵盖情形 confidence=0.95 reason=答案是风险标签的定义清单或说明性文字，属于概念性知识问答，非具体数值查询
+  final: capability=knowledge.policy.read scene=KNOWLEDGE_QA intent=POLICY_OR_PRODUCT_QA allowed_tools=['rag_search'] should_call_tool=True
+
+>>> 小微税贷的利率是怎么算的
+  raw : scene=KNOWLEDGE_QA intent=询问小微税贷利率的计算逻辑或规则 confidence=0.92 reason=用户问的是利率‘怎么算的’，关注计算逻辑、规则或方法论，属于概念性/流程性知识问答，答案应为文字说明而非具体数值。
+  final: capability=knowledge.policy.read scene=KNOWLEDGE_QA intent=POLICY_OR_PRODUCT_QA allowed_tools=['rag_search'] should_call_tool=True
+
+>>> 怎么办理企业授权
+  raw : scene=KNOWLEDGE_QA intent=询问企业授权的办理流程 confidence=0.92 reason=用户询问的是办理流程，属于概念性/操作流程类知识问答，答案应为文字描述或步骤清单，而非具体数值或执行动作。
+  final: capability=knowledge.policy.read scene=KNOWLEDGE_QA intent=POLICY_OR_PRODUCT_QA allowed_tools=['rag_search'] should_call_tool=True
+
+>>> 帮我给 ABC 公司生成授权链接
+  raw : scene=AUTHORIZATION intent=None confidence=0.95 reason=用户明确要求为指定企业生成授权链接，属于执行授权动作，匹配 AUTHORIZATION 场景和 CREATE_AUTHORIZATION_LINK 标准意图。
+  final: capability=authorization.link.create scene=AUTHORIZATION intent=CREATE_AUTHORIZATION_LINK allowed_tools=['create_authorization_link'] should_call_tool=True

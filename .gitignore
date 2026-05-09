@@ -1,6 +1,7 @@
 .env
 **/.env
 .vscode/
+.windsurf/
 *.pyc
 *.log
 __pycache__/
