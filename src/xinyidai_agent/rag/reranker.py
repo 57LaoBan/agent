@@ -19,7 +19,7 @@ class CrossEncoderReranker:
     def __init__(
         self,
         model_name: str = "BAAI/bge-reranker-v2-m3",
-        cache_dir: str = r"C:\Users\阿猫\.cache\huggingface",
+        cache_dir: str | None = None,
         device: str = "cpu",
         max_length: int = 512,
         batch_size: int = 32,
@@ -130,12 +130,13 @@ class CrossEncoderReranker:
                 from sentence_transformers import CrossEncoder
             except ImportError as exc:
                 raise RuntimeError("CrossEncoderReranker 需要安装 sentence-transformers。") from exc
-            self._model = CrossEncoder(
-                self._model_name,
-                max_length=self._max_length,
-                device=self._device,
-                cache_folder=self._cache_dir,
-            )
+            kwargs: dict[str, Any] = {
+                "max_length": self._max_length,
+                "device": self._device,
+            }
+            if self._cache_dir:
+                kwargs["cache_folder"] = self._cache_dir
+            self._model = CrossEncoder(self._model_name, **kwargs)
         return self._model
 
     def _predict_scores(self, pairs: list[tuple[str, str]]) -> np.ndarray:

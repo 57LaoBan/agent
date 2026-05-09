@@ -3,9 +3,15 @@ from __future__ import annotations
 from typing import Protocol
 
 from xinyidai_agent.protocol import RetrievalTrace, SourceDocument
+from xinyidai_agent.rag.async_runtime import AsyncRuntime
 from xinyidai_agent.rag.document_loader import Document, DocumentLoader
 from xinyidai_agent.rag.embedder import BGEEmbedder
 from xinyidai_agent.rag.citation import Citation, CitationGenerator
+from xinyidai_agent.rag.factory import (
+    ProductionRAGRuntime,
+    RAGConfig,
+    build_production_rag_runtime,
+)
 from xinyidai_agent.rag.reranker import CrossEncoderReranker
 from xinyidai_agent.rag.retriever import (
     DenseRetriever,
@@ -46,6 +52,7 @@ class EmptyRetriever:
 
 
 __all__ = [
+    "AsyncRuntime",
     "BGEEmbedder",
     "Citation",
     "CitationGenerator",
@@ -57,11 +64,14 @@ __all__ = [
     "HybridRetriever",
     "PgVectorStore",
     "ProductionRAGRetriever",
+    "ProductionRAGRuntime",
     "QueryRewriter",
     "QueryRouter",
+    "RAGConfig",
     "Retriever",
     "RetrievalResult",
     "SparseRetriever",
     "VectorSearchResult",
     "build_hybrid_retriever",
+    "build_production_rag_runtime",
 ]

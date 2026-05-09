@@ -11,6 +11,7 @@ from time import perf_counter
 from typing import Any, Literal
 
 from xinyidai_agent.protocol import RetrievalTrace, SourceDocument
+from xinyidai_agent.rag.async_runtime import AsyncRuntime
 from xinyidai_agent.rag.embedder import BGEEmbedder
 from xinyidai_agent.rag.storage import PgVectorStore
 
@@ -243,22 +244,44 @@ class ProductionRAGRetriever:
         reranker: Any | None = None,
         index_version: str = "pgvector",
         candidate_multiplier: int = 4,
+        async_runtime: AsyncRuntime | None = None,
+        retrieve_timeout_seconds: float = 30.0,
     ) -> None:
-        """初始化可注入到 RagSearchTool 的生产检索器。"""
+        """初始化可注入到 RagSearchTool 的生产检索器。
+
+        Args:
+            async_runtime: 后台异步运行时，注入后同步入口 retrieve() 会通过它把协程
+                调度到固定 loop，避免 FastAPI sync handler 每次新建 loop 时与
+                pgvector 连接池跨 loop 冲突。
+            retrieve_timeout_seconds: 单次同步等待的最长秒数，命中后抛超时异常。
+        """
         if candidate_multiplier <= 0:
             raise ValueError("candidate_multiplier 必须大于 0")
+        if retrieve_timeout_seconds <= 0:
+            raise ValueError("retrieve_timeout_seconds 必须大于 0")
         self._hybrid_retriever = hybrid_retriever
         self._reranker = reranker
         self._index_version = index_version
         self._candidate_multiplier = candidate_multiplier
+        self._async_runtime = async_runtime
+        self._retrieve_timeout_seconds = retrieve_timeout_seconds
 
     def retrieve(self, query: str, top_k: int) -> tuple[list[SourceDocument], RetrievalTrace]:
         """同步工具协议入口，内部执行完整异步检索链路。"""
+        if self._async_runtime is not None:
+            # 走后台 loop，连接池/asyncio.Queue 与该 loop 严格绑定。
+            return self._async_runtime.run_coroutine(
+                self.retrieve_async(query, top_k),
+                timeout=self._retrieve_timeout_seconds,
+            )
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.retrieve_async(query, top_k))
-        raise RuntimeError("ProductionRAGRetriever.retrieve 不能在已运行事件循环中调用，请使用 retrieve_async")
+        raise RuntimeError(
+            "ProductionRAGRetriever.retrieve 在已运行事件循环中被调用且未注入 AsyncRuntime，"
+            "请改用 retrieve_async 或在构造时传入 async_runtime。"
+        )
 
     async def retrieve_async(self, query: str, top_k: int) -> tuple[list[SourceDocument], RetrievalTrace]:
         """异步执行完整检索流程并生成工具层 trace。"""

@@ -24,13 +24,18 @@ class BGEEmbedder:
     def __init__(
         self,
         model_name: str = "BAAI/bge-m3",
-        cache_dir: str = r"C:\Users\阿猫\.cache\huggingface",
+        cache_dir: str | None = None,
         device: str = "cpu",
         max_length: int = 8192,
         query_cache_size: int = 1000,
         model: Any | None = None,
     ) -> None:
-        """初始化向量化器。"""
+        """初始化向量化器。
+
+        Args:
+            cache_dir: 模型缓存目录，传 None 时使用 HuggingFace 默认路径
+                （`HF_HOME` 环境变量或 `~/.cache/huggingface/hub`），以命中系统已下载的模型。
+        """
         if max_length <= 0:
             raise ValueError("max_length 必须大于 0")
         if query_cache_size < 0:
@@ -151,11 +156,10 @@ class BGEEmbedder:
             except ImportError as exc:
                 raise RuntimeError("BGEEmbedder 需要安装 sentence-transformers。") from exc
 
-            self._model = SentenceTransformer(
-                self._model_name,
-                cache_folder=self._cache_dir,
-                device=self._device,
-            )
+            kwargs: dict[str, Any] = {"device": self._device}
+            if self._cache_dir:
+                kwargs["cache_folder"] = self._cache_dir
+            self._model = SentenceTransformer(self._model_name, **kwargs)
         return self._model
 
     def _encode_one(self, text: str) -> np.ndarray:

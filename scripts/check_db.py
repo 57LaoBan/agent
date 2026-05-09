@@ -47,7 +47,7 @@ for table in tables:
     if count > 0:
         cur.execute(f"SELECT * FROM {table_name} LIMIT 3")
         rows = cur.fetchall()
-        print(f"  前 3 行数据:")
+        print("  前 3 行数据:")
         for row in rows:
             print(f"    {row}")
 

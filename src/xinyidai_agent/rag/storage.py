@@ -47,14 +47,22 @@ class PgVectorStore:
         hnsw_m: int = 16,
         hnsw_ef_construction: int = 200,
         hnsw_ef_search: int = 40,
+        table_prefix: str = "",
     ) -> None:
-        """初始化 pgvector 存储层配置。"""
+        """初始化 pgvector 存储层配置。
+
+        Args:
+            table_prefix: 表名命名空间前缀，用于在同库下隔离不同版本的 RAG 索引
+                （例如 baseline 与 v2）。默认为空，表名仍为 rag_documents/rag_chunks；
+                传入 "rag_v2_" 时表名变为 rag_v2_documents/rag_v2_chunks。
+        """
         if min_pool_size <= 0:
             raise ValueError("min_pool_size 必须大于 0")
         if max_pool_size < min_pool_size:
             raise ValueError("max_pool_size 必须大于等于 min_pool_size")
         if embedding_dimension <= 0:
             raise ValueError("embedding_dimension 必须大于 0")
+        normalized_prefix = self._normalize_table_prefix(table_prefix)
 
         self._connection_string = connection_string
         self._min_pool_size = min_pool_size
@@ -63,6 +71,16 @@ class PgVectorStore:
         self._hnsw_m = hnsw_m
         self._hnsw_ef_construction = hnsw_ef_construction
         self._hnsw_ef_search = hnsw_ef_search
+        self._table_prefix = normalized_prefix
+        # 表名与索引名一次性确定，后续 SQL 直接复用，避免每条语句重复拼接。
+        prefix_or_default = normalized_prefix or "rag_"
+        self._documents_table = f"{prefix_or_default}documents" if normalized_prefix else "rag_documents"
+        self._chunks_table = f"{prefix_or_default}chunks" if normalized_prefix else "rag_chunks"
+        index_stem = (normalized_prefix or "rag_").rstrip("_")
+        self._idx_chunks_hnsw = f"idx_{index_stem}_chunks_embedding_hnsw"
+        self._idx_chunks_doc_id = f"idx_{index_stem}_chunks_doc_id"
+        self._idx_chunks_metadata = f"idx_{index_stem}_chunks_metadata"
+        self._idx_chunks_content_tsv = f"idx_{index_stem}_chunks_content_tsv"
         self._pool: _AsyncPsycopgPool | None = None
         self._metrics = {
             "search_count": 0,
@@ -86,6 +104,21 @@ class PgVectorStore:
                 await self._create_tables(conn)
                 await self._create_indexes(conn)
 
+    @property
+    def table_prefix(self) -> str:
+        """返回当前命名空间前缀。"""
+        return self._table_prefix
+
+    @property
+    def documents_table(self) -> str:
+        """返回文档表全名（含前缀）。"""
+        return self._documents_table
+
+    @property
+    def chunks_table(self) -> str:
+        """返回分块表全名（含前缀）。"""
+        return self._chunks_table
+
     async def insert_document(
         self,
         doc_id: str,
@@ -98,8 +131,8 @@ class PgVectorStore:
         self._ensure_initialized()
         async with self._acquire() as conn:
             await conn.execute(
-                """
-                INSERT INTO rag_documents (doc_id, title, content, source_path, metadata)
+                f"""
+                INSERT INTO {self._documents_table} (doc_id, title, content, source_path, metadata)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (doc_id) DO UPDATE
                 SET title = EXCLUDED.title,
@@ -164,7 +197,7 @@ class PgVectorStore:
             async with conn.transaction():
                 await conn.execute(
                     f"""
-                    INSERT INTO rag_chunks (
+                    INSERT INTO {self._chunks_table} (
                         chunk_id, doc_id, content, embedding, start_char, end_char, metadata
                     )
                     SELECT
@@ -213,28 +246,33 @@ class PgVectorStore:
         where_sql, params = self._build_filter_clause(filters)
 
         async with self._acquire() as conn:
-            await conn.execute("SET hnsw.ef_search = %s", (self._hnsw_ef_search,))
-            rows = await conn.execute(
-                f"""
-                SELECT
-                    c.chunk_id,
-                    c.doc_id,
-                    c.content,
-                    1 - (c.embedding <=> %s::vector({self._embedding_dimension})) AS similarity,
-                    c.start_char,
-                    c.end_char,
-                    c.metadata,
-                    d.title AS document_title,
-                    d.source_path
-                FROM rag_chunks c
-                JOIN rag_documents d ON d.doc_id = c.doc_id
-                WHERE c.embedding IS NOT NULL {where_sql}
-                ORDER BY c.embedding <=> %s::vector({self._embedding_dimension})
-                LIMIT %s
-                """,
-                (vector, *params, vector, top_k),
-            )
-            result_rows = await rows.fetchall()
+            # 用 SET LOCAL 包在事务里，避免连接复用时 GUC 污染后续会话。
+            async with conn.transaction():
+                # SET 语句不支持参数化协议；ef_search 已经是 int，直接拼接安全。
+                await conn.execute(
+                    f"SET LOCAL hnsw.ef_search = {int(self._hnsw_ef_search)}"
+                )
+                rows = await conn.execute(
+                    f"""
+                    SELECT
+                        c.chunk_id,
+                        c.doc_id,
+                        c.content,
+                        1 - (c.embedding <=> %s::vector({self._embedding_dimension})) AS similarity,
+                        c.start_char,
+                        c.end_char,
+                        c.metadata,
+                        d.title AS document_title,
+                        d.source_path
+                    FROM {self._chunks_table} c
+                    JOIN {self._documents_table} d ON d.doc_id = c.doc_id
+                    WHERE c.embedding IS NOT NULL {where_sql}
+                    ORDER BY c.embedding <=> %s::vector({self._embedding_dimension})
+                    LIMIT %s
+                    """,
+                    (vector, *params, vector, top_k),
+                )
+                result_rows = await rows.fetchall()
 
         self._metrics["search_count"] += 1
         self._metrics["total_search_duration"] += perf_counter() - start_time
@@ -268,8 +306,8 @@ class PgVectorStore:
                     c.metadata,
                     d.title AS document_title,
                     d.source_path
-                FROM rag_chunks c
-                JOIN rag_documents d ON d.doc_id = c.doc_id
+                FROM {self._chunks_table} c
+                JOIN {self._documents_table} d ON d.doc_id = c.doc_id
                 WHERE to_tsvector('simple', c.content) @@ plainto_tsquery('simple', %s)
                 {where_sql}
                 ORDER BY similarity DESC
@@ -284,14 +322,18 @@ class PgVectorStore:
         """统计文档数。"""
         self._ensure_initialized()
         async with self._acquire() as conn:
-            row = await (await conn.execute("SELECT COUNT(*) AS count FROM rag_documents")).fetchone()
+            row = await (
+                await conn.execute(f"SELECT COUNT(*) AS count FROM {self._documents_table}")
+            ).fetchone()
         return int(row["count"])
 
     async def count_chunks(self) -> int:
         """统计分块数。"""
         self._ensure_initialized()
         async with self._acquire() as conn:
-            row = await (await conn.execute("SELECT COUNT(*) AS count FROM rag_chunks")).fetchone()
+            row = await (
+                await conn.execute(f"SELECT COUNT(*) AS count FROM {self._chunks_table}")
+            ).fetchone()
         return int(row["count"])
 
     def get_metrics(self) -> dict[str, float | int]:
@@ -317,15 +359,15 @@ class PgVectorStore:
             self._pool = None
 
     async def _create_tables(self, conn: AsyncConnection) -> None:
-        """创建 RAG 文档表和分块表。"""
+        """创建 RAG 文档表和分块表（受 table_prefix 影响）。"""
         await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS rag_documents (
+            f"""
+            CREATE TABLE IF NOT EXISTS {self._documents_table} (
                 doc_id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 source_path TEXT NOT NULL,
-                metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
@@ -333,9 +375,9 @@ class PgVectorStore:
         )
         await conn.execute(
             f"""
-            CREATE TABLE IF NOT EXISTS rag_chunks (
+            CREATE TABLE IF NOT EXISTS {self._chunks_table} (
                 chunk_id TEXT PRIMARY KEY,
-                doc_id TEXT NOT NULL REFERENCES rag_documents(doc_id) ON DELETE CASCADE,
+                doc_id TEXT NOT NULL REFERENCES {self._documents_table}(doc_id) ON DELETE CASCADE,
                 content TEXT NOT NULL,
                 embedding vector({self._embedding_dimension}),
                 start_char INTEGER,
@@ -348,24 +390,47 @@ class PgVectorStore:
         )
 
     async def _create_indexes(self, conn: AsyncConnection) -> None:
-        """创建向量、元数据和全文索引。"""
+        """创建向量、元数据和全文索引（索引名亦受 table_prefix 影响）。"""
         await conn.execute(
             f"""
-            CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
-            ON rag_chunks
+            CREATE INDEX IF NOT EXISTS {self._idx_chunks_hnsw}
+            ON {self._chunks_table}
             USING hnsw (embedding vector_cosine_ops)
             WITH (m = {self._hnsw_m}, ef_construction = {self._hnsw_ef_construction})
             """
         )
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc_id ON rag_chunks(doc_id)")
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_chunks_metadata ON rag_chunks USING gin(metadata)")
         await conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_rag_chunks_content_tsv
-            ON rag_chunks
+            f"CREATE INDEX IF NOT EXISTS {self._idx_chunks_doc_id} ON {self._chunks_table}(doc_id)"
+        )
+        await conn.execute(
+            f"CREATE INDEX IF NOT EXISTS {self._idx_chunks_metadata} "
+            f"ON {self._chunks_table} USING gin(metadata)"
+        )
+        await conn.execute(
+            f"""
+            CREATE INDEX IF NOT EXISTS {self._idx_chunks_content_tsv}
+            ON {self._chunks_table}
             USING gin(to_tsvector('simple', content))
             """
         )
+
+    @staticmethod
+    def _normalize_table_prefix(prefix: str) -> str:
+        """校验并规范化表前缀，避免 SQL 注入与非法标识符。
+
+        允许字符：小写字母、数字、下划线；以字母开头；最长 32 字符。
+        """
+        normalized = (prefix or "").strip()
+        if not normalized:
+            return ""
+        if len(normalized) > 32:
+            raise ValueError("table_prefix 长度不能超过 32")
+        if not normalized[0].isalpha():
+            raise ValueError("table_prefix 必须以字母开头")
+        for char in normalized:
+            if not (char.isalnum() or char == "_"):
+                raise ValueError(f"table_prefix 含非法字符: {char!r}")
+        return normalized.lower()
 
     def _ensure_initialized(self) -> None:
         """确保连接池已初始化。"""
@@ -488,8 +553,12 @@ class _AsyncPsycopgPool:
             return await self._queue.get()
 
     async def _new_connection(self) -> AsyncConnection:
-        """创建新的异步连接。"""
-        conn = await AsyncConnection.connect(self._dsn, row_factory=dict_row)
+        """创建新的异步连接。
+
+        统一开启 autocommit：避免单条 execute 因隐式事务未 commit 而在连接归还/关闭时被回滚；
+        需要原子性的写操作仍可通过 `async with conn.transaction()` 显式开启事务。
+        """
+        conn = await AsyncConnection.connect(self._dsn, row_factory=dict_row, autocommit=True)
         self._created += 1
         return conn
 
