@@ -24,9 +24,14 @@ class RagSearchTool:
             risk_level=self.risk_level,
             description=self.description,
             requires_confirmation=self.requires_confirmation,
+            is_read_only=True,
+            is_idempotent=True,
+            is_concurrency_safe=True,
+            cost_class="cheap",
+            max_duration_ms=3000,
             input_slots=[
                 SlotSpec("query", "string", description="检索问题"),
-                SlotSpec("top_k", "integer", description="返回证据数量"),
+                SlotSpec("top_k", "integer", required=False, description="返回证据数量"),
             ],
             output_slots=[
                 SlotSpec("sources", "array", description="检索证据列表", allow_empty=True),

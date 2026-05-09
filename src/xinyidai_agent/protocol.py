@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 SourceType = Literal["policy", "product", "rule", "web", "internal", "unknown"]
@@ -54,7 +54,39 @@ RouteScene = Literal[
     "SMALLTALK",
     "UNKNOWN",
 ]
+# 标准意图枚举：模型只能在以下值里选一个，禁止自由生成。
+# 每个枚举值都对应 capabilities/catalog.py 中的某个 capability。
+# 新增 capability 时同步更新此枚举与 catalog 即可，prompt 自动注入。
+StandardIntent = Literal[
+    "POLICY_OR_PRODUCT_QA",
+    "CREDIT_LIMIT_QUERY",
+    "PRODUCT_TERMS_QUERY",
+    "CREATE_AUTHORIZATION_LINK",
+    "CREATE_APPLICATION",
+    "APPLICATION_STATUS_QUERY",
+    "SMALLTALK",
+    "UNKNOWN",
+]
 RiskLevel = Literal["read_only", "link_create", "state_create", "state_update", "final_submit"]
+ReactActionType = Literal["call_tool", "answer", "ask_user", "handoff"]
+ReactObservationKind = Literal[
+    "success",
+    "empty",
+    "failed",
+    "unavailable",
+    "blocked",
+    "schema_error",
+]
+ReactTerminalReason = Literal[
+    "completed",
+    "answered_no_tool",
+    "ask_user",
+    "wait_confirmation",
+    "handoff",
+    "tool_blocked",
+    "max_steps",
+    "runtime_error",
+]
 ToolStatus = Literal["proposed", "running", "success", "failed", "blocked"]
 ToolCategory = Literal["knowledge", "data_query", "application", "authorization", "status", "utility"]
 SlotName = str
@@ -72,6 +104,7 @@ BusinessStatus = Literal[
     "CREDIT_AMOUNT_UNAVAILABLE",
     "APPLICATION_DRAFT_CREATED",
     "APPLICATION_SUBMITTED",
+    "TOOL_UNAVAILABLE",
     "TOOL_BLOCKED",
     "TOOL_SCHEMA_ERROR",
 ]
@@ -79,18 +112,6 @@ ActionType = Literal["business_action", "open_url", "open_miniprogram", "contact
 NextStepType = Literal["none", "suggest_tool", "ask_user", "stop_with_action"]
 DecisionAction = Literal["finish", "continue_tool", "ask_user", "reject"]
 ConfirmationStatus = Literal["none", "waiting", "confirmed", "cancelled"]
-RuntimeStepType = Literal[
-    "ROUTE",
-    "ASK_USER",
-    "ANSWER_WITHOUT_TOOL",
-    "PROPOSE_TOOL",
-    "EXECUTE_TOOL",
-    "PROPOSE_PENDING_ACTION",
-    "WAIT_CONFIRMATION",
-    "GENERATE_FINAL_ANSWER",
-    "HANDOFF",
-    "STOP",
-]
 
 
 class AuditInfo(BaseModel):
@@ -215,11 +236,16 @@ class RetrievalTrace(BaseModel):
 
 
 class ModelRouteOutput(BaseModel):
-    """模型意图识别的候选输出，只承载语义理解结果。"""
+    """模型意图识别的候选输出，只承载语义理解结果。
+
+    standard_intent 是路由决策的唯一依据，必须取自预设枚举；
+    raw_intent 仅作为诊断字段保留，不参与 capability 解析。
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     scene: RouteScene
+    standard_intent: StandardIntent
     raw_intent: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     filled_slots: dict[str, Any] = Field(default_factory=dict)
@@ -312,20 +338,6 @@ class PendingAction(BaseModel):
     precondition_hash: str | None = None
     expires_at: str | None = None
     created_at: str | None = None
-
-
-class RuntimeStepDecision(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    step_type: RuntimeStepType
-    reason: str = ""
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    tool_call: ToolCall | None = None
-    pending_action: PendingAction | None = None
-    answer: str | None = None
-    question: str | None = None
-    missing_slots: list[str] = Field(default_factory=list)
-    handoff_reason: str | None = None
 
 
 class SessionToolResult(BaseModel):
@@ -477,3 +489,78 @@ class ChatResponse(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """将响应转换为普通字典，兼容旧调用方。"""
         return self.model_dump()
+
+
+class ReactAction(BaseModel):
+    """模型每轮 reasoning 的动作契约。
+
+    四种 action 互斥：调用工具、直接回答、追问用户、转人工。字段校验采用
+    fail-closed 策略，缺少关键字段时直接拒绝构造。
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: ReactActionType
+    tool_name: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    final_answer: str | None = None
+    evidence_used: list[str] = Field(default_factory=list)
+    message: str | None = None
+
+    @model_validator(mode="after")
+    def validate_action_payload(self) -> "ReactAction":
+        """按动作类型校验必填字段，防止模型输出半结构化动作。"""
+        if self.type == "call_tool" and not _has_text(self.tool_name):
+            raise ValueError("call_tool 必须给出 tool_name")
+        return self
+
+
+class ReactStepDecision(BaseModel):
+    """模型每轮的完整 reasoning 输出。"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    thought: str = Field(default="", max_length=500)
+    action: ReactAction
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class ToolExecutionObservation(BaseModel):
+    """单次工具执行结果的结构化观察。
+
+    任何工具调用尝试都会变成 observation，不允许把工具异常、None 或未注册状态
+    直接泄漏给 ReAct 主循环。
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: ReactObservationKind
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    summary: str = ""
+    business_status: str | None = None
+    sources_count: int = 0
+    reason: str | None = None
+    hint: str | None = None
+    alternative_tools: list[str] = Field(default_factory=list)
+    duration_ms: float = 0.0
+
+
+class ReactTerminal(BaseModel):
+    """ReAct 循环的终止决策。"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reason: ReactTerminalReason
+    final_answer: str
+    sources: list[SourceDocument] = Field(default_factory=list)
+    pending_action: PendingAction | None = None
+    handoff_reason: str | None = None
+    missing_slots: list[str] = Field(default_factory=list)
+    error_class: str | None = None
+    error_message: str | None = None
+
+
+def _has_text(value: str | None) -> bool:
+    """判断字符串字段是否包含有效内容。"""
+    return bool(value and value.strip())

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import time
 
+from xinyidai_agent.capabilities.base import CapabilityPolicy
 from xinyidai_agent.protocol import (
     ChatRequest,
     PendingAction,
+    ReactObservationKind,
     RouteDecision,
     SessionStateSnapshot,
     ToolCall,
     ToolCategory,
+    ToolExecutionObservation,
     ToolResult,
     ToolResultEnvelope,
 )
@@ -178,6 +182,51 @@ class ToolRegistry:
 
         return execution
 
+    def execute_observed(
+        self,
+        request: ChatRequest,
+        route: RouteDecision,
+        tool_call: ToolCall,
+        *,
+        capability: CapabilityPolicy,
+        session_state: SessionStateSnapshot | None = None,
+        confirmed_action: PendingAction | None = None,
+        pending_action_validated: bool = False,
+    ) -> tuple[ToolExecution, ToolExecutionObservation]:
+        """执行工具并产出结构化 observation。"""
+        started = time.perf_counter()
+
+        if tool_call.tool_name not in self._tools:
+            execution = ToolExecution(result=self._unavailable_result(tool_call))
+            observation = ToolExecutionObservation(
+                kind="unavailable",
+                tool_name=tool_call.tool_name,
+                arguments=dict(tool_call.arguments),
+                reason=f"{tool_call.tool_name} 未在工具注册表接入。",
+                alternative_tools=[
+                    name
+                    for name in capability.allowed_tools
+                    if name in self._tools and name != tool_call.tool_name
+                ],
+                hint=self._build_unavailable_hint(capability, tool_call.tool_name),
+                duration_ms=self._elapsed_ms(started),
+            )
+            return execution, observation
+
+        try:
+            execution = self.execute(
+                request,
+                route,
+                tool_call,
+                session_state=session_state,
+                confirmed_action=confirmed_action,
+                pending_action_validated=pending_action_validated,
+            )
+        except (RuntimeError, ValueError, TypeError) as exc:
+            execution = ToolExecution(result=self._failed_result(tool_call, exc))
+        observation = self._build_observation_from_execution(tool_call, execution, started_at=started)
+        return execution, observation
+
     def _is_allowed(self, route: RouteDecision, tool: AgentTool) -> bool:
         if not route.allowed_tools and not route.allowed_tool_categories:
             return True
@@ -224,6 +273,165 @@ class ToolRegistry:
         if value_type == "array":
             return isinstance(value, list)
         return True
+
+    def _build_observation_from_execution(
+        self,
+        tool_call: ToolCall,
+        execution: ToolExecution,
+        started_at: float,
+    ) -> ToolExecutionObservation:
+        """把 ToolResult 翻译成 ToolExecutionObservation。"""
+        result = execution.result
+        duration_ms = self._elapsed_ms(started_at)
+
+        if result.status == "blocked":
+            kind: ReactObservationKind = (
+                "schema_error"
+                if result.error_message and "槽位校验" in result.error_message
+                else "blocked"
+            )
+            return ToolExecutionObservation(
+                kind=kind,
+                tool_name=tool_call.tool_name,
+                arguments=dict(tool_call.arguments),
+                reason=result.error_message or result.message or "工具被风险策略阻断",
+                hint=(
+                    "工具入参不符合 schema，请修正 arguments。"
+                    if kind == "schema_error"
+                    else "工具被白名单或风险策略拦截，请重新选择 action。"
+                ),
+                duration_ms=duration_ms,
+            )
+
+        if result.status == "failed":
+            kind = "schema_error" if result.business_status == "TOOL_SCHEMA_ERROR" else "failed"
+            return ToolExecutionObservation(
+                kind=kind,
+                tool_name=tool_call.tool_name,
+                arguments=dict(tool_call.arguments),
+                reason=result.error_message or result.message or "工具执行失败",
+                hint="工具失败，可重试一次或改用 ask_user / handoff。",
+                duration_ms=duration_ms,
+            )
+
+        if result.business_status in {"NOT_FOUND", "PARTIAL_DATA", "EMPTY"}:
+            return ToolExecutionObservation(
+                kind="empty",
+                tool_name=tool_call.tool_name,
+                arguments=dict(tool_call.arguments),
+                summary=self._summarize_output(result),
+                business_status=result.business_status,
+                sources_count=len(execution.sources),
+                hint="结果为空或不完整，请基于现有信息回答或追问用户。",
+                duration_ms=duration_ms,
+            )
+
+        return ToolExecutionObservation(
+            kind="success",
+            tool_name=tool_call.tool_name,
+            arguments=dict(tool_call.arguments),
+            summary=self._summarize_output(result),
+            business_status=result.business_status,
+            sources_count=len(execution.sources),
+            duration_ms=duration_ms,
+        )
+
+    def _summarize_output(self, result: ToolResult) -> str:
+        """生成不超过 500 字符的工具结果摘要。"""
+        parts: list[str] = []
+        if result.envelope and result.envelope.message:
+            parts.append(result.envelope.message[:200])
+        data = result.envelope.data if result.envelope else result.output
+        for key in (
+            "amount",
+            "limit",
+            "credit_amount",
+            "status",
+            "url",
+            "application_id",
+            "authorization_id",
+        ):
+            if key in data:
+                parts.append(f"{key}={data[key]}")
+        if not parts:
+            parts.append(result.message or "工具已成功返回")
+        return "; ".join(parts)[:500]
+
+    def _unavailable_result(self, tool_call: ToolCall) -> ToolResult:
+        """工具未注册时构造非 terminal ToolResult。"""
+        message = f"工具 {tool_call.tool_name} 暂未接入"
+        return ToolResult(
+            tool_call_id=tool_call.tool_call_id,
+            tool_name=tool_call.tool_name,
+            tool_category=tool_call.tool_category,
+            status="failed",
+            envelope=ToolResultEnvelope(
+                success=False,
+                status="TOOL_UNAVAILABLE",
+                code=503,
+                message=message,
+            ),
+            error_message=message,
+            business_status="TOOL_UNAVAILABLE",
+            code=503,
+            message=message,
+            terminal=False,
+            user_visible_message="该数据查询暂未上线。",
+            model_observation=message,
+        )
+
+    def _failed_result(self, tool_call: ToolCall, exc: RuntimeError | ValueError | TypeError) -> ToolResult:
+        """工具抛出运行时异常时构造失败结果。"""
+        message = f"工具 {tool_call.tool_name} 执行失败：{type(exc).__name__}: {exc}"
+        return ToolResult(
+            tool_call_id=tool_call.tool_call_id,
+            tool_name=tool_call.tool_name,
+            tool_category=tool_call.tool_category,
+            status="failed",
+            envelope=ToolResultEnvelope(
+                success=False,
+                status="ERROR",
+                code=500,
+                message=message,
+            ),
+            error_message=message,
+            business_status="ERROR",
+            code=500,
+            message=message,
+            terminal=True,
+            user_visible_message="工具执行失败，请稍后再试或转人工处理。",
+            model_observation=message,
+        )
+
+    def _build_unavailable_hint(self, capability: CapabilityPolicy, tool_name: str) -> str:
+        """根据 capability 给出硬编码提示。"""
+        hints: dict[str, str] = {
+            "knowledge.policy.read": (
+                "知识库检索工具未接入时禁止编造政策答案，请 ask_user 让用户稍后再试或转人工。"
+            ),
+            "credit.limit.read": (
+                "授信额度查询后端尚未接入。请明确告知用户该数据查询暂未上线，禁止编造金额。"
+            ),
+            "product.terms.read": (
+                "产品参数查询后端尚未接入。可改用 rag_search 查询政策范围，禁止编造具体数值。"
+            ),
+            "authorization.link.create": (
+                "授权链接工具未接入时不能生成链接，请 handoff 转人工或 ask_user 稍后再试。"
+            ),
+            "application.draft.create": "申请草稿后端尚未接入，请 handoff 转人工受理。",
+            "application.status.read": (
+                "申请状态查询工具未接入时不能编造进度，请告知用户暂未上线并建议人工咨询。"
+            ),
+            "smalltalk.respond": "闲聊能力不应调用工具，请改用 answer 直接回应用户。",
+            "unknown.clarify": "未知意图不应调用工具，请改用 ask_user 追问用户真实需求。",
+        }
+        return hints[capability.capability_id] if capability.capability_id in hints else (
+            f"{tool_name} 暂未接入，请改用 answer / ask_user / handoff。"
+        )
+
+    def _elapsed_ms(self, started_at: float) -> float:
+        """计算从 started_at 到当前的毫秒耗时。"""
+        return (time.perf_counter() - started_at) * 1000
 
     def _blocked_result(
         self,

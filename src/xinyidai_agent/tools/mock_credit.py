@@ -18,9 +18,14 @@ class MockCreditAmountTool:
             risk_level=self.risk_level,
             description=self.description,
             requires_confirmation=self.requires_confirmation,
+            is_read_only=True,
+            is_idempotent=True,
+            is_concurrency_safe=True,
+            cost_class="medium",
+            max_duration_ms=5000,
             input_slots=[
                 SlotSpec("company_name", "string", description="企业名称"),
-                SlotSpec("query", "string", description="用户原始问题"),
+                SlotSpec("query", "string", required=False, description="用户原始问题"),
             ],
             output_slots=[
                 SlotSpec("company_name", "string", description="企业名称"),
