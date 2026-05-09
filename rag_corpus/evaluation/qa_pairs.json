@@ -1,0 +1,242 @@
+[
+  {
+    "id": "qa_001",
+    "category": "产品问答",
+    "question": "信易贷知识库里有哪些常见贷款产品？",
+    "expected_answer": "常见贷款产品包括经营周转贷、订单融资贷和科创成长贷。经营周转贷关注经营现金流稳定性，订单融资贷关注应收账款回款能力，科创成长贷关注研发持续性与订单增长。",
+    "ground_truth_docs": ["credit_products_and_flow.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_1", "credit_products_and_flow_chunk_2", "credit_products_and_flow_chunk_3"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_002",
+    "category": "产品问答",
+    "question": "经营周转贷适合什么企业，额度和期限是什么？",
+    "expected_answer": "经营周转贷适合连续经营满 2 年的中小企业，额度区间为 100万-1000万，期限为 6-24个月，核心关注经营现金流稳定性。",
+    "ground_truth_docs": ["credit_products_and_flow.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_1"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_003",
+    "category": "产品问答",
+    "question": "订单融资贷主要看什么，适用对象是谁？",
+    "expected_answer": "订单融资贷适用于有稳定上下游订单的制造或贸易企业，核心关注应收账款回款能力，额度区间 80万-800万，期限 3-12个月。",
+    "ground_truth_docs": ["credit_products_and_flow.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_2"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_004",
+    "category": "产品问答",
+    "question": "科创成长贷的额度、期限和关注点是什么？",
+    "expected_answer": "科创成长贷适用于研发投入占比高的科创型企业，额度区间 200万-2000万，期限 12-36个月，核心关注研发持续性与订单增长。",
+    "ground_truth_docs": ["credit_products_and_flow.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_3"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_005",
+    "category": "准入规则",
+    "question": "企业授信建议输出前通常要经过哪些流程？",
+    "expected_answer": "标准授信流程包括企业信息校验、授权状态检查、经营与信用快照查询、风险标签归集与分层，以及授信建议输出。",
+    "ground_truth_docs": ["credit_products_and_flow.md", "authorization_and_data_scope.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_0", "authorization_and_data_scope_chunk_0"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_006",
+    "category": "准入规则",
+    "question": "失信被执行企业是否可以直接给出通过授信的结论？",
+    "expected_answer": "不应直接给出通过授信结论。失信被执行属于重大负面标签，通常触发高风险或进入人工复核，仍需结合经营快照和其他证据审慎判断。",
+    "ground_truth_docs": ["risk_label_dictionary.md", "credit_products_and_flow.md"],
+    "ground_truth_chunks": ["risk_label_dictionary_chunk_0", "risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2", "credit_products_and_flow_chunk_4"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_007",
+    "category": "授权流程",
+    "question": "系统返回 AUTH_REQUIRED 时应该怎么处理？",
+    "expected_answer": "当状态为 AUTH_REQUIRED 时，不继续输出具体企业信用结论，应返回授权动作引导用户先完成授权，授权完成后再继续查询快照与风险标签。",
+    "ground_truth_docs": ["authorization_and_data_scope.md", "agent_rag_intro.md"],
+    "ground_truth_chunks": ["authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_008",
+    "category": "授权流程",
+    "question": "知识库定义了哪些授权场景？",
+    "expected_answer": "授权场景包括 credit_query，即企业信用查询授权；以及 loan_assessment，即授信评估授权。",
+    "ground_truth_docs": ["authorization_and_data_scope.md"],
+    "ground_truth_chunks": ["authorization_and_data_scope_chunk_0"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_009",
+    "category": "授权流程",
+    "question": "数据最小化原则要求输出时注意什么？",
+    "expected_answer": "数据最小化要求只查询当前问题需要的数据，输出时优先摘要，不暴露不必要敏感字段，并且日志与评测数据使用合成企业，不使用真实企业隐私数据。",
+    "ground_truth_docs": ["authorization_and_data_scope.md"],
+    "ground_truth_chunks": ["authorization_and_data_scope_chunk_2"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_010",
+    "category": "风险标签",
+    "question": "风险分层中的低风险、中风险、高风险分别如何定义？",
+    "expected_answer": "低风险是标签数量少且无重大负面；中风险是存在轻中度异常，需补充材料；高风险是存在失信、重大处罚或明显偿债压力。",
+    "ground_truth_docs": ["risk_label_dictionary.md"],
+    "ground_truth_chunks": ["risk_label_dictionary_chunk_0"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_011",
+    "category": "风险标签",
+    "question": "税务异常标签是什么意思？",
+    "expected_answer": "税务异常表示近一年存在税务申报异常记录。",
+    "ground_truth_docs": ["risk_label_dictionary.md"],
+    "ground_truth_chunks": ["risk_label_dictionary_chunk_1"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_012",
+    "category": "风险标签",
+    "question": "司法涉诉标签解释时要区分什么？",
+    "expected_answer": "司法涉诉表示存在诉讼或被执行信息，解释时需要区分已结案与未结案。",
+    "ground_truth_docs": ["risk_label_dictionary.md"],
+    "ground_truth_chunks": ["risk_label_dictionary_chunk_1"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_013",
+    "category": "风险标签",
+    "question": "单个风险标签能不能直接判定拒贷？",
+    "expected_answer": "单个标签不能直接判定拒贷，需要结合经营快照；失信被执行与重大处罚通常进入人工复核，标签解释应使用业务语言，避免只给原始字段。",
+    "ground_truth_docs": ["risk_label_dictionary.md"],
+    "ground_truth_chunks": ["risk_label_dictionary_chunk_2"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_014",
+    "category": "企业信息",
+    "question": "星航科技有限公司的行业、注册地和授信额度参考是什么？",
+    "expected_answer": "星航科技有限公司行业为工业软件与智能制造，注册地为上海浦东，当前授信额度参考为 800万元。",
+    "ground_truth_docs": ["enterprise_profiles_synthetic.md"],
+    "ground_truth_chunks": ["enterprise_profiles_synthetic_chunk_0"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_015",
+    "category": "企业信息",
+    "question": "北辰供应链管理有限公司近12个月有什么风险提示？",
+    "expected_answer": "北辰供应链管理有限公司近12个月风险提示为合同纠纷 1 次，且已结案。",
+    "ground_truth_docs": ["enterprise_profiles_synthetic.md"],
+    "ground_truth_chunks": ["enterprise_profiles_synthetic_chunk_1"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_016",
+    "category": "企业信息",
+    "question": "华屹新能源设备有限公司的营收区间和风险提示是什么？",
+    "expected_answer": "华屹新能源设备有限公司最近一年营收区间为 5000万-8000万，近12个月风险提示为应收账款周转偏慢。",
+    "ground_truth_docs": ["enterprise_profiles_synthetic.md", "risk_label_dictionary.md"],
+    "ground_truth_chunks": ["enterprise_profiles_synthetic_chunk_2", "risk_label_dictionary_chunk_1"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_017",
+    "category": "企业信息",
+    "question": "澜石医疗器械贸易有限公司最近一年有没有重大风险事件？",
+    "expected_answer": "澜石医疗器械贸易有限公司近12个月重大风险事件为无。",
+    "ground_truth_docs": ["enterprise_profiles_synthetic.md"],
+    "ground_truth_chunks": ["enterprise_profiles_synthetic_chunk_3"],
+    "difficulty": "easy",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_018",
+    "category": "政策更新",
+    "question": "2026Q1 企业信用评估口径调整的生效时间和调整方向是什么？",
+    "expected_answer": "2026Q1 企业信用评估口径调整自 2026-01-01 生效，调整方向是强化经营现金流与纳税稳定性权重。",
+    "ground_truth_docs": ["policy_updates_synthetic_2026.md"],
+    "ground_truth_chunks": ["policy_updates_synthetic_2026_chunk_0"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": false, "has_answer": true}
+  },
+  {
+    "id": "qa_019",
+    "category": "政策更新",
+    "question": "2026Q2 中小企业融资支持要点关注什么？",
+    "expected_answer": "2026Q2 中小企业融资支持要点自 2026-04-01 生效，关注对纳税信用 A/B 企业给出差异化利率区间，并建议在授信建议中明确政策适配条件。",
+    "ground_truth_docs": ["policy_updates_synthetic_2026.md"],
+    "ground_truth_chunks": ["policy_updates_synthetic_2026_chunk_1"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_020",
+    "category": "政策更新",
+    "question": "遇到最新、近期、今年这类时效问题时应该怎么回答？",
+    "expected_answer": "涉及最新、近期、今年等表述时，应优先触发线上补充，但最终仍需结合本地知识库给出稳定结论框架。",
+    "ground_truth_docs": ["policy_updates_synthetic_2026.md"],
+    "ground_truth_chunks": ["policy_updates_synthetic_2026_chunk_2"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_021",
+    "category": "证据约束",
+    "question": "企业信用相关结论应该基于什么，证据不足时怎么办？",
+    "expected_answer": "企业信用相关结论应尽量基于工具返回数据与可追溯证据，不应凭空编造。若证据不足，应优先继续检索或向用户追问最小必要信息。",
+    "ground_truth_docs": ["agent_rag_intro.md"],
+    "ground_truth_chunks": ["agent_rag_intro_chunk_0"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": false, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_022",
+    "category": "证据约束",
+    "question": "返回企业信用分析结果建议包含哪些部分？",
+    "expected_answer": "返回结果建议包含结论、依据和建议。授信建议也应至少包含可授信或谨慎授信等结论、关键风险标签和经营指标等依据，以及额度、期限和补充材料建议。",
+    "ground_truth_docs": ["agent_rag_intro.md", "credit_products_and_flow.md"],
+    "ground_truth_chunks": ["agent_rag_intro_chunk_0", "credit_products_and_flow_chunk_4"],
+    "difficulty": "medium",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_023",
+    "category": "准入规则",
+    "question": "纳税信用 A/B 企业在 2026Q2 政策下如何体现授信建议？",
+    "expected_answer": "2026Q2 政策关注对纳税信用 A/B 企业给出差异化利率区间，因此授信建议中应明确政策适配条件，并结合企业纳税信用等级与产品利率区间输出建议。",
+    "ground_truth_docs": ["policy_updates_synthetic_2026.md", "enterprise_profiles_synthetic.md", "credit_products_and_flow.md"],
+    "ground_truth_chunks": ["policy_updates_synthetic_2026_chunk_1", "enterprise_profiles_synthetic_chunk_0", "credit_products_and_flow_chunk_4"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  },
+  {
+    "id": "qa_024",
+    "category": "准入规则",
+    "question": "应收账款周转偏慢时，选择订单融资贷需要关注什么风险？",
+    "expected_answer": "订单融资贷核心关注应收账款回款能力；如果企业存在应收账款周转偏慢或应收账款高占比，应关注回款周期拉长对短期偿债的影响，并结合经营快照审慎评估。",
+    "ground_truth_docs": ["credit_products_and_flow.md", "risk_label_dictionary.md", "enterprise_profiles_synthetic.md"],
+    "ground_truth_chunks": ["credit_products_and_flow_chunk_2", "risk_label_dictionary_chunk_1", "enterprise_profiles_synthetic_chunk_2"],
+    "difficulty": "hard",
+    "metadata": {"requires_multi_doc": true, "requires_reasoning": true, "has_answer": true}
+  }
+]

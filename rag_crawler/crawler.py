@@ -364,7 +364,7 @@ class MinimalRAGCrawler:
             md_file.write_text(md_content, encoding="utf-8")
 
             # 根据配置决定是否切片
-            enable_chunking = self.config.get("enable_chunking", False)
+            enable_chunking = self.config.get("enable_chunking", True)
             doc_chunks: list[dict[str, Any]] = []
 
             if enable_chunking:

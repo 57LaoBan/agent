@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from xinyidai_agent.protocol import ChatRequest, RouteDecision, ToolCall, ToolResult, ToolResultEnvelope
 from xinyidai_agent.rag import EmptyRetriever, Retriever
+from xinyidai_agent.rag.citation import CitationGenerator
 from xinyidai_agent.tools.base import SlotSpec, ToolExecution, ToolSpec
 
 
@@ -14,6 +15,7 @@ class RagSearchTool:
 
     def __init__(self, retriever: Retriever | None = None) -> None:
         self._retriever = retriever or EmptyRetriever()
+        self._citation_generator = CitationGenerator()
 
     def spec(self) -> ToolSpec:
         return ToolSpec(
@@ -29,6 +31,13 @@ class RagSearchTool:
             output_slots=[
                 SlotSpec("sources", "array", description="检索证据列表", allow_empty=True),
                 SlotSpec("retrieval_trace", "object", description="检索过程 trace"),
+                SlotSpec(
+                    "citation_context",
+                    "string",
+                    required=False,
+                    description="带编号引用的 Prompt 上下文",
+                    allow_empty=True,
+                ),
             ],
             input_schema={
                 "query": "检索问题",
@@ -45,6 +54,7 @@ class RagSearchTool:
         query = str(tool_call.arguments.get("query") or request.user_message)
         top_k = int(tool_call.arguments.get("top_k") or request.top_k)
         sources, retrieval_trace = self._retriever.retrieve(query, top_k)
+        citation_context = self._citation_generator.format_context(sources)
         has_sources = bool(sources)
         business_status = "RAG_RESULT_READY" if has_sources else "PARTIAL_DATA"
         message = "知识库检索完成。" if has_sources else "知识库暂无可用证据。"
@@ -56,6 +66,7 @@ class RagSearchTool:
             output={
                 "sources": [source.model_dump() for source in sources],
                 "retrieval_trace": retrieval_trace.model_dump(),
+                "citation_context": citation_context,
             },
             envelope=ToolResultEnvelope(
                 success=True,
@@ -65,6 +76,7 @@ class RagSearchTool:
                 data={
                     "sources": [source.model_dump() for source in sources],
                     "retrieval_trace": retrieval_trace.model_dump(),
+                    "citation_context": citation_context,
                 },
             ),
             business_status=business_status,

@@ -1,0 +1,40 @@
+{
+  "schema_version": "p0-evaluation-v1",
+  "created_at": "2026-05-08",
+  "description": "P0 评测体系元数据索引。processed/chunks 与 processed/embeddings 由后续入库流程生成，本文件先固定评测集与知识库映射。",
+  "knowledge_docs": [
+    "agent_rag_intro.md",
+    "authorization_and_data_scope.md",
+    "credit_products_and_flow.md",
+    "enterprise_profiles_synthetic.md",
+    "policy_updates_synthetic_2026.md",
+    "risk_label_dictionary.md"
+  ],
+  "evaluation_files": {
+    "qa_pairs": "rag_corpus/evaluation/qa_pairs.json",
+    "retrieval_test": "rag_corpus/evaluation/retrieval_test.json"
+  },
+  "chunk_id_convention": "{document_stem}_chunk_{section_index}",
+  "chunk_map": {
+    "agent_rag_intro_chunk_0": "事实型约束",
+    "agent_rag_intro_chunk_1": "授权流程提示",
+    "authorization_and_data_scope_chunk_0": "授权场景",
+    "authorization_and_data_scope_chunk_1": "AUTH_REQUIRED 处理规范",
+    "authorization_and_data_scope_chunk_2": "数据最小化原则",
+    "credit_products_and_flow_chunk_0": "标准授信流程",
+    "credit_products_and_flow_chunk_1": "经营周转贷",
+    "credit_products_and_flow_chunk_2": "订单融资贷",
+    "credit_products_and_flow_chunk_3": "科创成长贷",
+    "credit_products_and_flow_chunk_4": "授信建议输出模板",
+    "enterprise_profiles_synthetic_chunk_0": "星航科技有限公司",
+    "enterprise_profiles_synthetic_chunk_1": "北辰供应链管理有限公司",
+    "enterprise_profiles_synthetic_chunk_2": "华屹新能源设备有限公司",
+    "enterprise_profiles_synthetic_chunk_3": "澜石医疗器械贸易有限公司",
+    "policy_updates_synthetic_2026_chunk_0": "2026Q1 企业信用评估口径调整",
+    "policy_updates_synthetic_2026_chunk_1": "2026Q2 中小企业融资支持要点",
+    "policy_updates_synthetic_2026_chunk_2": "时效问题回答建议",
+    "risk_label_dictionary_chunk_0": "风险分层",
+    "risk_label_dictionary_chunk_1": "常见标签解释",
+    "risk_label_dictionary_chunk_2": "标签使用建议"
+  }
+}

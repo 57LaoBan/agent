@@ -1,0 +1,272 @@
+[
+  {
+    "id": "retrieval_001",
+    "query": "经营周转贷适合哪些企业？",
+    "relevant_docs": ["credit_products_and_flow.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_1"],
+    "irrelevant_docs": ["authorization_and_data_scope.md", "risk_label_dictionary.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_1", "credit_products_and_flow_chunk_4", "credit_products_and_flow_chunk_0"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "精确匹配"}
+  },
+  {
+    "id": "retrieval_002",
+    "query": "订单融资贷关注应收账款回款能力吗？",
+    "relevant_docs": ["credit_products_and_flow.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_2"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md", "authorization_and_data_scope.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_2", "risk_label_dictionary_chunk_1", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "精确匹配"}
+  },
+  {
+    "id": "retrieval_003",
+    "query": "科创企业适合哪类成长型贷款？",
+    "relevant_docs": ["credit_products_and_flow.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_3"],
+    "irrelevant_docs": ["risk_label_dictionary.md", "authorization_and_data_scope.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_3", "policy_updates_synthetic_2026_chunk_0", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "semantic", "ambiguity": "medium", "scenario": "语义匹配"}
+  },
+  {
+    "id": "retrieval_004",
+    "query": "授信建议输出应该包含哪些内容？",
+    "relevant_docs": ["credit_products_and_flow.md", "agent_rag_intro.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_4", "agent_rag_intro_chunk_0"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_4", "agent_rag_intro_chunk_0", "credit_products_and_flow_chunk_0"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "多文档召回"}
+  },
+  {
+    "id": "retrieval_005",
+    "query": "标准授信流程有哪些步骤？",
+    "relevant_docs": ["credit_products_and_flow.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_0"],
+    "irrelevant_docs": ["risk_label_dictionary.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_0", "authorization_and_data_scope_chunk_0", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "排序测试"}
+  },
+  {
+    "id": "retrieval_006",
+    "query": "AUTH_REQUIRED 时能不能继续输出企业信用结论？",
+    "relevant_docs": ["authorization_and_data_scope.md", "agent_rag_intro.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md", "credit_products_and_flow.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1", "authorization_and_data_scope_chunk_0"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "low", "scenario": "授权流程"}
+  },
+  {
+    "id": "retrieval_007",
+    "query": "企业信用查询授权和授信评估授权分别是什么？",
+    "relevant_docs": ["authorization_and_data_scope.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_0"],
+    "irrelevant_docs": ["risk_label_dictionary.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_0", "authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "精确匹配"}
+  },
+  {
+    "id": "retrieval_008",
+    "query": "数据最小化原则要求怎样处理敏感字段？",
+    "relevant_docs": ["authorization_and_data_scope.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_2"],
+    "irrelevant_docs": ["credit_products_and_flow.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_2", "agent_rag_intro_chunk_0", "authorization_and_data_scope_chunk_1"],
+    "metadata": {"query_type": "semantic", "ambiguity": "medium", "scenario": "语义匹配"}
+  },
+  {
+    "id": "retrieval_009",
+    "query": "低风险中风险高风险如何区分？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_0"],
+    "irrelevant_docs": ["policy_updates_synthetic_2026.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_0", "risk_label_dictionary_chunk_2", "risk_label_dictionary_chunk_1"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "风险标签"}
+  },
+  {
+    "id": "retrieval_010",
+    "query": "税务申报异常记录对应什么风险标签？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_1"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_0", "risk_label_dictionary_chunk_2"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "精确匹配"}
+  },
+  {
+    "id": "retrieval_011",
+    "query": "失信被执行为什么严重？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2", "risk_label_dictionary_chunk_0"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2", "risk_label_dictionary_chunk_0"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "排序测试"}
+  },
+  {
+    "id": "retrieval_012",
+    "query": "单个风险标签可以直接拒贷吗？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_2"],
+    "irrelevant_docs": ["policy_updates_synthetic_2026.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_2", "risk_label_dictionary_chunk_0", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "风险标签"}
+  },
+  {
+    "id": "retrieval_013",
+    "query": "司法涉诉需要区分已结案和未结案吗？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_1"],
+    "irrelevant_docs": ["credit_products_and_flow.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2", "enterprise_profiles_synthetic_chunk_1"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "精确匹配"}
+  },
+  {
+    "id": "retrieval_014",
+    "query": "星航科技有限公司注册在哪里？",
+    "relevant_docs": ["enterprise_profiles_synthetic.md"],
+    "relevant_chunks": ["enterprise_profiles_synthetic_chunk_0"],
+    "irrelevant_docs": ["credit_products_and_flow.md"],
+    "expected_rank": ["enterprise_profiles_synthetic_chunk_0", "policy_updates_synthetic_2026_chunk_1", "credit_products_and_flow_chunk_3"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "企业信息"}
+  },
+  {
+    "id": "retrieval_015",
+    "query": "北辰供应链管理有限公司合同纠纷是否已结案？",
+    "relevant_docs": ["enterprise_profiles_synthetic.md", "risk_label_dictionary.md"],
+    "relevant_chunks": ["enterprise_profiles_synthetic_chunk_1", "risk_label_dictionary_chunk_1"],
+    "irrelevant_docs": ["policy_updates_synthetic_2026.md"],
+    "expected_rank": ["enterprise_profiles_synthetic_chunk_1", "risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2"],
+    "metadata": {"query_type": "factual", "ambiguity": "medium", "scenario": "多文档召回"}
+  },
+  {
+    "id": "retrieval_016",
+    "query": "华屹新能源设备有限公司应收账款周转偏慢如何影响授信？",
+    "relevant_docs": ["enterprise_profiles_synthetic.md", "risk_label_dictionary.md", "credit_products_and_flow.md"],
+    "relevant_chunks": ["enterprise_profiles_synthetic_chunk_2", "risk_label_dictionary_chunk_1", "credit_products_and_flow_chunk_2"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["enterprise_profiles_synthetic_chunk_2", "risk_label_dictionary_chunk_1", "credit_products_and_flow_chunk_2"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "多文档召回"}
+  },
+  {
+    "id": "retrieval_017",
+    "query": "澜石医疗器械贸易有限公司有没有重大风险事件？",
+    "relevant_docs": ["enterprise_profiles_synthetic.md"],
+    "relevant_chunks": ["enterprise_profiles_synthetic_chunk_3"],
+    "irrelevant_docs": ["risk_label_dictionary.md"],
+    "expected_rank": ["enterprise_profiles_synthetic_chunk_3", "enterprise_profiles_synthetic_chunk_0", "risk_label_dictionary_chunk_0"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "企业信息"}
+  },
+  {
+    "id": "retrieval_018",
+    "query": "2026Q1 信用评估口径调整生效时间是什么？",
+    "relevant_docs": ["policy_updates_synthetic_2026.md"],
+    "relevant_chunks": ["policy_updates_synthetic_2026_chunk_0"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["policy_updates_synthetic_2026_chunk_0", "policy_updates_synthetic_2026_chunk_2", "credit_products_and_flow_chunk_0"],
+    "metadata": {"query_type": "factual", "ambiguity": "low", "scenario": "政策更新"}
+  },
+  {
+    "id": "retrieval_019",
+    "query": "2026Q2 政策对纳税信用 A/B 企业有什么要求？",
+    "relevant_docs": ["policy_updates_synthetic_2026.md"],
+    "relevant_chunks": ["policy_updates_synthetic_2026_chunk_1"],
+    "irrelevant_docs": ["risk_label_dictionary.md"],
+    "expected_rank": ["policy_updates_synthetic_2026_chunk_1", "enterprise_profiles_synthetic_chunk_0", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "政策更新"}
+  },
+  {
+    "id": "retrieval_020",
+    "query": "问最新政策时为什么要触发线上补充？",
+    "relevant_docs": ["policy_updates_synthetic_2026.md"],
+    "relevant_chunks": ["policy_updates_synthetic_2026_chunk_2"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md"],
+    "expected_rank": ["policy_updates_synthetic_2026_chunk_2", "policy_updates_synthetic_2026_chunk_1", "agent_rag_intro_chunk_0"],
+    "metadata": {"query_type": "semantic", "ambiguity": "medium", "scenario": "时效问题"}
+  },
+  {
+    "id": "retrieval_021",
+    "query": "企业信用结论不能凭空编造的依据在哪里？",
+    "relevant_docs": ["agent_rag_intro.md"],
+    "relevant_chunks": ["agent_rag_intro_chunk_0"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md"],
+    "expected_rank": ["agent_rag_intro_chunk_0", "credit_products_and_flow_chunk_4", "authorization_and_data_scope_chunk_2"],
+    "metadata": {"query_type": "semantic", "ambiguity": "low", "scenario": "证据约束"}
+  },
+  {
+    "id": "retrieval_022",
+    "query": "证据不足时应该追问还是编造答案？",
+    "relevant_docs": ["agent_rag_intro.md"],
+    "relevant_chunks": ["agent_rag_intro_chunk_0"],
+    "irrelevant_docs": ["credit_products_and_flow.md"],
+    "expected_rank": ["agent_rag_intro_chunk_0", "authorization_and_data_scope_chunk_2", "agent_rag_intro_chunk_1"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "low", "scenario": "负样本"}
+  },
+  {
+    "id": "retrieval_023",
+    "query": "融资建议要同时考虑产品额度和企业风险标签吗？",
+    "relevant_docs": ["credit_products_and_flow.md", "risk_label_dictionary.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_4", "risk_label_dictionary_chunk_2", "credit_products_and_flow_chunk_1"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_4", "risk_label_dictionary_chunk_2", "credit_products_and_flow_chunk_1"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "多文档召回"}
+  },
+  {
+    "id": "retrieval_024",
+    "query": "经营现金流稳定性和 2026Q1 口径调整有什么关系？",
+    "relevant_docs": ["credit_products_and_flow.md", "policy_updates_synthetic_2026.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_1", "policy_updates_synthetic_2026_chunk_0"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["policy_updates_synthetic_2026_chunk_0", "credit_products_and_flow_chunk_1", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "medium", "scenario": "语义匹配"}
+  },
+  {
+    "id": "retrieval_025",
+    "query": "研发持续性和订单增长是哪种贷款的关注点？",
+    "relevant_docs": ["credit_products_and_flow.md"],
+    "relevant_chunks": ["credit_products_and_flow_chunk_3"],
+    "irrelevant_docs": ["risk_label_dictionary.md"],
+    "expected_rank": ["credit_products_and_flow_chunk_3", "policy_updates_synthetic_2026_chunk_0", "enterprise_profiles_synthetic_chunk_0"],
+    "metadata": {"query_type": "semantic", "ambiguity": "low", "scenario": "排序测试"}
+  },
+  {
+    "id": "retrieval_026",
+    "query": "企业征信纳税司法信息查询前必须确认什么？",
+    "relevant_docs": ["authorization_and_data_scope.md", "agent_rag_intro.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1"],
+    "irrelevant_docs": ["policy_updates_synthetic_2026.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_1", "agent_rag_intro_chunk_1", "authorization_and_data_scope_chunk_2"],
+    "metadata": {"query_type": "semantic", "ambiguity": "medium", "scenario": "授权流程"}
+  },
+  {
+    "id": "retrieval_027",
+    "query": "日志和评测数据能使用真实企业隐私数据吗？",
+    "relevant_docs": ["authorization_and_data_scope.md", "enterprise_profiles_synthetic.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_2", "enterprise_profiles_synthetic_chunk_0"],
+    "irrelevant_docs": ["credit_products_and_flow.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_2", "enterprise_profiles_synthetic_chunk_0", "agent_rag_intro_chunk_0"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "low", "scenario": "负样本"}
+  },
+  {
+    "id": "retrieval_028",
+    "query": "纳税信用等级 A 的企业有哪些样本？",
+    "relevant_docs": ["enterprise_profiles_synthetic.md", "policy_updates_synthetic_2026.md"],
+    "relevant_chunks": ["enterprise_profiles_synthetic_chunk_0", "enterprise_profiles_synthetic_chunk_3", "policy_updates_synthetic_2026_chunk_1"],
+    "irrelevant_docs": ["authorization_and_data_scope.md"],
+    "expected_rank": ["enterprise_profiles_synthetic_chunk_0", "enterprise_profiles_synthetic_chunk_3", "policy_updates_synthetic_2026_chunk_1"],
+    "metadata": {"query_type": "factual", "ambiguity": "medium", "scenario": "企业信息"}
+  },
+  {
+    "id": "retrieval_029",
+    "query": "高风险企业通常包含哪些重大负面因素？",
+    "relevant_docs": ["risk_label_dictionary.md"],
+    "relevant_chunks": ["risk_label_dictionary_chunk_0", "risk_label_dictionary_chunk_1"],
+    "irrelevant_docs": ["enterprise_profiles_synthetic.md"],
+    "expected_rank": ["risk_label_dictionary_chunk_0", "risk_label_dictionary_chunk_1", "risk_label_dictionary_chunk_2"],
+    "metadata": {"query_type": "semantic", "ambiguity": "medium", "scenario": "风险标签"}
+  },
+  {
+    "id": "retrieval_030",
+    "query": "授信评估里授权、风险、产品建议的证据分别来自哪里？",
+    "relevant_docs": ["authorization_and_data_scope.md", "risk_label_dictionary.md", "credit_products_and_flow.md"],
+    "relevant_chunks": ["authorization_and_data_scope_chunk_0", "risk_label_dictionary_chunk_0", "credit_products_and_flow_chunk_4"],
+    "irrelevant_docs": ["policy_updates_synthetic_2026.md"],
+    "expected_rank": ["authorization_and_data_scope_chunk_0", "risk_label_dictionary_chunk_0", "credit_products_and_flow_chunk_4"],
+    "metadata": {"query_type": "reasoning", "ambiguity": "high", "scenario": "多文档召回"}
+  }
+]

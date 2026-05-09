@@ -1,0 +1,832 @@
+{
+  "mode": "dry_run_expected_rank",
+  "retrieval_metrics": {
+    "recall_at_1": 0.7722222222222221,
+    "recall_at_3": 1.0,
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_5": 1.0,
+    "precision_at_5": 0.3133333333333334,
+    "recall_at_20": 1.0,
+    "recall_at_100": 1.0,
+    "multi_hop_recall": 1.0,
+    "query_count": 30
+  },
+  "answer_metrics": {
+    "faithfulness": 1.0,
+    "relevance": 1.0,
+    "completeness": 1.0,
+    "citation_accuracy": 1.0,
+    "answer_accuracy": 1.0,
+    "hallucination_rate": 0.0,
+    "evaluated_count": 24
+  },
+  "dataset_validation": {
+    "qa": {
+      "valid": true,
+      "errors": [],
+      "warnings": [],
+      "profile": {
+        "total_count": 24,
+        "category_distribution": {
+          "产品问答": 4,
+          "准入规则": 4,
+          "授权流程": 3,
+          "风险标签": 4,
+          "企业信息": 4,
+          "政策更新": 3,
+          "证据约束": 2
+        },
+        "difficulty_distribution": {
+          "easy": 9,
+          "medium": 6,
+          "hard": 9
+        },
+        "multi_doc_count": 7,
+        "reasoning_count": 10,
+        "no_answer_count": 0
+      }
+    },
+    "retrieval": {
+      "valid": true,
+      "errors": [],
+      "warnings": [],
+      "profile": {
+        "total_count": 30,
+        "category_distribution": {
+          "精确匹配": 5,
+          "语义匹配": 3,
+          "多文档召回": 5,
+          "排序测试": 3,
+          "授权流程": 2,
+          "风险标签": 3,
+          "企业信息": 3,
+          "政策更新": 2,
+          "时效问题": 1,
+          "证据约束": 1,
+          "负样本": 2
+        },
+        "difficulty_distribution": {
+          "low": 16,
+          "medium": 13,
+          "high": 1
+        },
+        "multi_doc_count": 10,
+        "reasoning_count": 10,
+        "no_answer_count": 0
+      }
+    }
+  },
+  "alerts": [
+    {
+      "name": "PrecisionAt5Low",
+      "severity": "critical",
+      "message": "PrecisionAt5Low: actual 0.3133 < target 0.6000",
+      "actual": 0.3133333333333334,
+      "target": 0.6
+    }
+  ],
+  "prometheus_metrics": "rag_extra_qa_pair_count 24.0\nrag_extra_retrieval_case_count 30.0\nrag_retrieval_mrr 1.0\nrag_retrieval_multi_hop_recall 1.0\nrag_retrieval_ndcg_at_5 1.0\nrag_retrieval_precision_at_5 0.3133333333333334\nrag_retrieval_query_count 30.0\nrag_retrieval_recall_at_1 0.7722222222222221\nrag_retrieval_recall_at_10 1.0\nrag_retrieval_recall_at_100 1.0\nrag_retrieval_recall_at_20 1.0\nrag_retrieval_recall_at_3 1.0\nrag_retrieval_recall_at_5 1.0\n",
+  "retrieval_case_count": 30,
+  "qa_pair_count": 24,
+  "retrieval_details": [
+    {
+      "id": "retrieval_001",
+      "query": "经营周转贷适合哪些企业？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_1",
+        "credit_products_and_flow_chunk_4",
+        "credit_products_and_flow_chunk_0"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_002",
+      "query": "订单融资贷关注应收账款回款能力吗？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_2",
+        "risk_label_dictionary_chunk_1",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_2"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_003",
+      "query": "科创企业适合哪类成长型贷款？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_3",
+        "policy_updates_synthetic_2026_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_3"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_004",
+      "query": "授信建议输出应该包含哪些内容？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_4",
+        "agent_rag_intro_chunk_0",
+        "credit_products_and_flow_chunk_0"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_4",
+        "agent_rag_intro_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_005",
+      "query": "标准授信流程有哪些步骤？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_0",
+        "authorization_and_data_scope_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_006",
+      "query": "AUTH_REQUIRED 时能不能继续输出企业信用结论？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_1",
+        "agent_rag_intro_chunk_1",
+        "authorization_and_data_scope_chunk_0"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_1",
+        "agent_rag_intro_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_007",
+      "query": "企业信用查询授权和授信评估授权分别是什么？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_0",
+        "authorization_and_data_scope_chunk_1",
+        "agent_rag_intro_chunk_1"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_008",
+      "query": "数据最小化原则要求怎样处理敏感字段？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_2",
+        "agent_rag_intro_chunk_0",
+        "authorization_and_data_scope_chunk_1"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_2"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_009",
+      "query": "低风险中风险高风险如何区分？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_0",
+        "risk_label_dictionary_chunk_2",
+        "risk_label_dictionary_chunk_1"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_010",
+      "query": "税务申报异常记录对应什么风险标签？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_0",
+        "risk_label_dictionary_chunk_2"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_011",
+      "query": "失信被执行为什么严重？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_2",
+        "risk_label_dictionary_chunk_0"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_2",
+        "risk_label_dictionary_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 0.3333333333333333,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.6,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_012",
+      "query": "单个风险标签可以直接拒贷吗？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_2",
+        "risk_label_dictionary_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_2"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_013",
+      "query": "司法涉诉需要区分已结案和未结案吗？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_2",
+        "enterprise_profiles_synthetic_chunk_1"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_014",
+      "query": "星航科技有限公司注册在哪里？",
+      "retrieved_ids": [
+        "enterprise_profiles_synthetic_chunk_0",
+        "policy_updates_synthetic_2026_chunk_1",
+        "credit_products_and_flow_chunk_3"
+      ],
+      "relevant_ids": [
+        "enterprise_profiles_synthetic_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_015",
+      "query": "北辰供应链管理有限公司合同纠纷是否已结案？",
+      "retrieved_ids": [
+        "enterprise_profiles_synthetic_chunk_1",
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_2"
+      ],
+      "relevant_ids": [
+        "enterprise_profiles_synthetic_chunk_1",
+        "risk_label_dictionary_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_016",
+      "query": "华屹新能源设备有限公司应收账款周转偏慢如何影响授信？",
+      "retrieved_ids": [
+        "enterprise_profiles_synthetic_chunk_2",
+        "risk_label_dictionary_chunk_1",
+        "credit_products_and_flow_chunk_2"
+      ],
+      "relevant_ids": [
+        "enterprise_profiles_synthetic_chunk_2",
+        "risk_label_dictionary_chunk_1",
+        "credit_products_and_flow_chunk_2"
+      ],
+      "metrics": {
+        "recall_at_1": 0.3333333333333333,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.6,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_017",
+      "query": "澜石医疗器械贸易有限公司有没有重大风险事件？",
+      "retrieved_ids": [
+        "enterprise_profiles_synthetic_chunk_3",
+        "enterprise_profiles_synthetic_chunk_0",
+        "risk_label_dictionary_chunk_0"
+      ],
+      "relevant_ids": [
+        "enterprise_profiles_synthetic_chunk_3"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_018",
+      "query": "2026Q1 信用评估口径调整生效时间是什么？",
+      "retrieved_ids": [
+        "policy_updates_synthetic_2026_chunk_0",
+        "policy_updates_synthetic_2026_chunk_2",
+        "credit_products_and_flow_chunk_0"
+      ],
+      "relevant_ids": [
+        "policy_updates_synthetic_2026_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_019",
+      "query": "2026Q2 政策对纳税信用 A/B 企业有什么要求？",
+      "retrieved_ids": [
+        "policy_updates_synthetic_2026_chunk_1",
+        "enterprise_profiles_synthetic_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "policy_updates_synthetic_2026_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_020",
+      "query": "问最新政策时为什么要触发线上补充？",
+      "retrieved_ids": [
+        "policy_updates_synthetic_2026_chunk_2",
+        "policy_updates_synthetic_2026_chunk_1",
+        "agent_rag_intro_chunk_0"
+      ],
+      "relevant_ids": [
+        "policy_updates_synthetic_2026_chunk_2"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_021",
+      "query": "企业信用结论不能凭空编造的依据在哪里？",
+      "retrieved_ids": [
+        "agent_rag_intro_chunk_0",
+        "credit_products_and_flow_chunk_4",
+        "authorization_and_data_scope_chunk_2"
+      ],
+      "relevant_ids": [
+        "agent_rag_intro_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_022",
+      "query": "证据不足时应该追问还是编造答案？",
+      "retrieved_ids": [
+        "agent_rag_intro_chunk_0",
+        "authorization_and_data_scope_chunk_2",
+        "agent_rag_intro_chunk_1"
+      ],
+      "relevant_ids": [
+        "agent_rag_intro_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_023",
+      "query": "融资建议要同时考虑产品额度和企业风险标签吗？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_4",
+        "risk_label_dictionary_chunk_2",
+        "credit_products_and_flow_chunk_1"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_4",
+        "risk_label_dictionary_chunk_2",
+        "credit_products_and_flow_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.3333333333333333,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.6,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_024",
+      "query": "经营现金流稳定性和 2026Q1 口径调整有什么关系？",
+      "retrieved_ids": [
+        "policy_updates_synthetic_2026_chunk_0",
+        "credit_products_and_flow_chunk_1",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_1",
+        "policy_updates_synthetic_2026_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_025",
+      "query": "研发持续性和订单增长是哪种贷款的关注点？",
+      "retrieved_ids": [
+        "credit_products_and_flow_chunk_3",
+        "policy_updates_synthetic_2026_chunk_0",
+        "enterprise_profiles_synthetic_chunk_0"
+      ],
+      "relevant_ids": [
+        "credit_products_and_flow_chunk_3"
+      ],
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_026",
+      "query": "企业征信纳税司法信息查询前必须确认什么？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_1",
+        "agent_rag_intro_chunk_1",
+        "authorization_and_data_scope_chunk_2"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_1",
+        "agent_rag_intro_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_027",
+      "query": "日志和评测数据能使用真实企业隐私数据吗？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_2",
+        "enterprise_profiles_synthetic_chunk_0",
+        "agent_rag_intro_chunk_0"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_2",
+        "enterprise_profiles_synthetic_chunk_0"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_028",
+      "query": "纳税信用等级 A 的企业有哪些样本？",
+      "retrieved_ids": [
+        "enterprise_profiles_synthetic_chunk_0",
+        "enterprise_profiles_synthetic_chunk_3",
+        "policy_updates_synthetic_2026_chunk_1"
+      ],
+      "relevant_ids": [
+        "enterprise_profiles_synthetic_chunk_0",
+        "enterprise_profiles_synthetic_chunk_3",
+        "policy_updates_synthetic_2026_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.3333333333333333,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.6,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_029",
+      "query": "高风险企业通常包含哪些重大负面因素？",
+      "retrieved_ids": [
+        "risk_label_dictionary_chunk_0",
+        "risk_label_dictionary_chunk_1",
+        "risk_label_dictionary_chunk_2"
+      ],
+      "relevant_ids": [
+        "risk_label_dictionary_chunk_0",
+        "risk_label_dictionary_chunk_1"
+      ],
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "multi_hop_recall": 1.0
+      }
+    },
+    {
+      "id": "retrieval_030",
+      "query": "授信评估里授权、风险、产品建议的证据分别来自哪里？",
+      "retrieved_ids": [
+        "authorization_and_data_scope_chunk_0",
+        "risk_label_dictionary_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "relevant_ids": [
+        "authorization_and_data_scope_chunk_0",
+        "risk_label_dictionary_chunk_0",
+        "credit_products_and_flow_chunk_4"
+      ],
+      "metrics": {
+        "recall_at_1": 0.3333333333333333,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "recall_at_100": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "precision_at_5": 0.6,
+        "multi_hop_recall": 1.0
+      }
+    }
+  ]
+}
