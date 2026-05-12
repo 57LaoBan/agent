@@ -50,6 +50,16 @@ class ToolRegistry:
         tool = self._tools.get(name)
         return tool.spec() if tool is not None else None
 
+    def register_external(self, tool: AgentTool) -> None:
+        """运行期注入外部工具，例如 McpToolAdapter。
+
+        重名直接失败，避免无声覆盖已有工具。
+        """
+        if tool.name in self._tools:
+            raise ValueError(f"工具名重复注册：{tool.name}")
+        self._tools[tool.name] = tool
+        self._tools_by_category.setdefault(tool.category, []).append(tool)
+
     def execute(
         self,
         request: ChatRequest,
@@ -469,3 +479,15 @@ def default_tool_registry(retriever: Retriever | None = None) -> ToolRegistry:
             RagSearchTool(retriever=retriever),
         ]
     )
+
+
+def build_tool_registry(
+    retriever: Retriever | None = None,
+    mcp_adapters: Iterable[AgentTool] | None = None,
+) -> ToolRegistry:
+    """组合默认工具和可选 MCP 适配器。"""
+    registry = default_tool_registry(retriever)
+    if mcp_adapters:
+        for adapter in mcp_adapters:
+            registry.register_external(adapter)
+    return registry

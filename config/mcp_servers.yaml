@@ -1,0 +1,32 @@
+# MCP Server 配置。
+# 字符串可使用 ${ENV_VAR} 占位符，未定义则保留字面量。
+servers:
+  - name: template
+    transport: stdio
+    command: python
+    args:
+      - "-m"
+      - "xinyidai_mcp_servers.template_server.server"
+    description: "通用业务模板生成器"
+    allowed_tools:
+      - generate_markdown_template
+      - generate_excel_template
+      - list_generated_templates
+    risk_level: read_only
+    timeout_seconds: 30
+    enabled: true
+
+  - name: filesystem
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "./workspace"
+    description: "工作区文件读取，只开放只读工具"
+    allowed_tools:
+      - read_file
+      - list_directory
+    risk_level: read_only
+    timeout_seconds: 30
+    enabled: true

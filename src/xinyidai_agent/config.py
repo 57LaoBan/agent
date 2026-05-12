@@ -72,6 +72,22 @@ class SessionStorageConfig:
         return cls(backend=backend, dsn=dsn)
 
 
+@dataclass(frozen=True)
+class McpConfig:
+    """MCP 集成开关与配置文件路径。"""
+
+    enabled: bool = True
+    config_path: Path | None = None
+
+    @classmethod
+    def from_env(cls) -> "McpConfig":
+        """从环境变量读取 MCP 开关；MCP_ENABLED=0 时整体停用。"""
+        enabled = _to_bool(os.getenv("MCP_ENABLED"), default=True)
+        raw_path = (os.getenv("MCP_CONFIG_PATH") or "").strip()
+        config_path = Path(raw_path).expanduser() if raw_path else None
+        return cls(enabled=enabled, config_path=config_path)
+
+
 def _build_default_postgres_dsn() -> str:
     """根据本地 Docker 默认参数拼出 PostgreSQL DSN。"""
     host = os.getenv("SESSION_DB_HOST", "localhost")
@@ -95,3 +111,15 @@ def _normalize_postgres_dsn(raw_dsn: str) -> str:
         password = os.getenv("SESSION_DB_PASSWORD", "xinyidai123")
         return f"postgresql://{user}:{password}@{host}:{port}/{database}"
     return raw_dsn
+
+
+def _to_bool(value: str | None, *, default: bool) -> bool:
+    """解析常见布尔环境变量写法。"""
+    if value is None:
+        return default
+    text = value.strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", ""}:
+        return False
+    return default

@@ -51,6 +51,7 @@ RouteScene = Literal[
     "LOAN_APPLY",
     "AUTHORIZATION",
     "APPLICATION_STATUS",
+    "UTILITY",
     "SMALLTALK",
     "UNKNOWN",
 ]
@@ -107,6 +108,9 @@ BusinessStatus = Literal[
     "TOOL_UNAVAILABLE",
     "TOOL_BLOCKED",
     "TOOL_SCHEMA_ERROR",
+    "TOOL_TIMEOUT",
+    "TOOL_INPUT_INVALID",
+    "TOOL_FAILED",
 ]
 ActionType = Literal["business_action", "open_url", "open_miniprogram", "contact_service"]
 NextStepType = Literal["none", "suggest_tool", "ask_user", "stop_with_action"]

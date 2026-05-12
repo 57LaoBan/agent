@@ -5,12 +5,13 @@ import os
 import sys
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from xinyidai_agent.config import AgentConfig, SessionStorageConfig, load_env_file
+from xinyidai_agent.config import AgentConfig, McpConfig, SessionStorageConfig, load_env_file
 from xinyidai_agent.capabilities.catalog import CapabilityCatalog, default_capability_catalog
 from xinyidai_agent.evidence_policy import EvidencePolicy
 from xinyidai_agent.llm import OpenAICompatibleChatModel
@@ -22,7 +23,10 @@ from xinyidai_agent.memory import (
     PostgresSessionStore,
 )
 from xinyidai_agent.protocol import AgentEvent, ChatRequest, ChatResponse, ConfirmActionRequest
+from xinyidai_agent.mcp import McpManager, default_config_path, load_mcp_servers_config
+from xinyidai_agent.mcp.tool_adapter import McpToolAdapter
 from xinyidai_agent.rag import (
+    AsyncRuntime,
     EmptyRetriever,
     ProductionRAGRuntime,
     Retriever,
@@ -36,10 +40,21 @@ from xinyidai_agent.runtime.fast_path import FastPathRunner
 from xinyidai_agent.runtime.react_engine import ReactStepEngine
 from xinyidai_agent.runtime.react_loop import ReactRuntime
 from xinyidai_agent.runtime.react_observation_builder import ReactObservationBuilder
-from xinyidai_agent.tools.registry import default_tool_registry
+from xinyidai_agent.tools.registry import build_tool_registry
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _RuntimeResources:
+    """绑定 Agent 默认运行时及其需要在 lifespan 关闭的外部资源。"""
+
+    agent_loop: ControlledAgentLoop
+    retriever: Retriever | None = None
+    rag_runtime: ProductionRAGRuntime | None = None
+    mcp_manager: McpManager | None = None
+    owned_mcp_runtime: AsyncRuntime | None = None
 
 
 def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
@@ -52,21 +67,28 @@ def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
         ):
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    rag_runtime: ProductionRAGRuntime | None = None
+    resources: _RuntimeResources | None = None
     if loop is None:
-        agent_loop, rag_runtime = _build_default_loop_with_runtime()
+        resources = _build_default_loop_with_runtime()
+        agent_loop = resources.agent_loop
     else:
         agent_loop = loop
 
     @asynccontextmanager
     async def _lifespan(_: FastAPI):
-        """FastAPI 生命周期：启动不做额外动作，关闭时释放 RAG 资源。"""
+        """FastAPI 生命周期：关闭时按依赖顺序释放 MCP 与 RAG 资源。"""
         try:
             yield
         finally:
-            if rag_runtime is not None:
-                _LOGGER.info("关闭 RAG 运行时资源")
-                rag_runtime.close()
+            if resources is not None and resources.mcp_manager is not None:
+                _LOGGER.info("关闭 MCP Manager 资源。")
+                resources.mcp_manager.shutdown()
+            if resources is not None and resources.rag_runtime is not None:
+                _LOGGER.info("关闭 RAG 运行时资源。")
+                resources.rag_runtime.close()
+            if resources is not None and resources.owned_mcp_runtime is not None:
+                _LOGGER.info("关闭 MCP 专用 AsyncRuntime。")
+                resources.owned_mcp_runtime.close()
 
     app = FastAPI(title="信易贷聊天 Agent", version="0.1.0", lifespan=_lifespan)
     app.add_middleware(
@@ -76,6 +98,14 @@ def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+    if resources is not None:
+        app.state.agent_loop = agent_loop
+        app.state.retriever = resources.retriever
+        app.state.mcp_manager = resources.mcp_manager
+        app.state.async_runtime = (
+            resources.rag_runtime.runtime if resources.rag_runtime else resources.owned_mcp_runtime
+        )
+        app.state.tool_registry = getattr(agent_loop, "tool_registry", None)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -124,11 +154,11 @@ def create_app(loop: ControlledAgentLoop | None = None) -> FastAPI:
 
 def _build_default_loop() -> ControlledAgentLoop:
     """保留原接口以兼容外部调用者；内部委托给 _build_default_loop_with_runtime。"""
-    agent_loop, _ = _build_default_loop_with_runtime()
-    return agent_loop
+    resources = _build_default_loop_with_runtime()
+    return resources.agent_loop
 
 
-def _build_default_loop_with_runtime() -> tuple[ControlledAgentLoop, ProductionRAGRuntime | None]:
+def _build_default_loop_with_runtime() -> _RuntimeResources:
     """按环境配置创建 Agent 循环、会话存储与可选的生产 RAG 运行时。
 
     RAG_ENABLED 默认开启；设为 false 则回退到 EmptyRetriever，保证未配置数据库时仍可起服。
@@ -156,7 +186,12 @@ def _build_default_loop_with_runtime() -> tuple[ControlledAgentLoop, ProductionR
         retriever = EmptyRetriever()
         _LOGGER.warning("RAG_ENABLED=false，使用 EmptyRetriever 占位。")
 
-    tool_registry = default_tool_registry(retriever=retriever)
+    mcp_manager, owned_mcp_runtime = _build_mcp_resources(rag_runtime)
+    mcp_adapters = [
+        McpToolAdapter(descriptor, mcp_manager)
+        for descriptor in mcp_manager.iter_descriptors()
+    ] if mcp_manager is not None else []
+    tool_registry = build_tool_registry(retriever=retriever, mcp_adapters=mcp_adapters)
 
     capability_catalog = CapabilityCatalog(default_capability_catalog())
     router = ControlledIntentRouter(
@@ -175,6 +210,10 @@ def _build_default_loop_with_runtime() -> tuple[ControlledAgentLoop, ProductionR
         session_store = PostgresSessionStore(storage.dsn, ensure_schema=False)
         memory_manager = MemoryManager(session_store)
     else:
+        if mcp_manager is not None:
+            mcp_manager.shutdown()
+        if owned_mcp_runtime is not None:
+            owned_mcp_runtime.close()
         if rag_runtime is not None:
             rag_runtime.close()
         raise RuntimeError(f"unsupported SESSION_STORAGE_BACKEND: {storage.backend}")
@@ -200,7 +239,39 @@ def _build_default_loop_with_runtime() -> tuple[ControlledAgentLoop, ProductionR
         react_runtime=react_runtime,
     )
 
-    return agent_loop, rag_runtime
+    return _RuntimeResources(
+        agent_loop=agent_loop,
+        retriever=retriever,
+        rag_runtime=rag_runtime,
+        mcp_manager=mcp_manager,
+        owned_mcp_runtime=owned_mcp_runtime,
+    )
+
+
+def _build_mcp_resources(
+    rag_runtime: ProductionRAGRuntime | None,
+) -> tuple[McpManager | None, AsyncRuntime | None]:
+    """按环境配置启动 MCP，并返回 manager 与可能由本模块持有的 AsyncRuntime。"""
+    mcp_cfg = McpConfig.from_env()
+    if not mcp_cfg.enabled:
+        return None, None
+
+    config_path = mcp_cfg.config_path if mcp_cfg.config_path else default_config_path()
+    servers_cfg = load_mcp_servers_config(config_path)
+    owned_runtime: AsyncRuntime | None = None
+    async_runtime = rag_runtime.runtime if rag_runtime is not None else None
+    if async_runtime is None:
+        owned_runtime = AsyncRuntime(thread_name="xinyidai-mcp-runtime")
+        async_runtime = owned_runtime
+
+    manager = McpManager(servers_cfg.servers, async_runtime)
+    try:
+        manager.start()
+    except Exception:
+        if owned_runtime is not None:
+            owned_runtime.close()
+        raise
+    return manager, owned_runtime
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -226,3 +297,6 @@ def _to_sse(events: Iterator[AgentEvent], loop: ControlledAgentLoop | None = Non
         yield f"data: {payload}\n\n"
     if loop is not None and hasattr(loop, "record_events"):
         loop.record_events(emitted)
+
+
+app = create_app()
