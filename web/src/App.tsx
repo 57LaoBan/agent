@@ -346,6 +346,12 @@ function RoutePanel({ route }: { route: RouteSnapshot | null }) {
       <Metric label="风险等级" value={route.risk_level} />
       <Metric label="判断来源" value={route.route_source ?? "unknown"} />
       <Metric label="需要确认" value={route.confirmation_required ? "是" : "否"} />
+      {route.route_failure && (
+        <>
+          <Metric label="失败分类" value={route.route_failure.category} />
+          <Metric label="修复次数" value={`${route.route_failure.attempts}`} />
+        </>
+      )}
       <div className="tool-list">
         <span>允许工具</span>
         {route.allowed_tools.map((tool) => (
@@ -361,6 +367,14 @@ function RoutePanel({ route }: { route: RouteSnapshot | null }) {
         </div>
       )}
       <p className="reason">{route.route_reason}</p>
+      {route.route_failure && route.route_failure.suggested_questions.length > 0 && (
+        <div className="tool-list">
+          <span>建议追问</span>
+          {route.route_failure.suggested_questions.map((question) => (
+            <code key={question}>{question}</code>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

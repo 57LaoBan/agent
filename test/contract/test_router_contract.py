@@ -13,10 +13,14 @@ from xinyidai_agent.router import ControlledIntentRouter, RoutePolicy  # noqa: E
 
 
 class JsonRouterModel:
-    def __init__(self, content: str) -> None:
+    """可按顺序返回多次模型输出的路由模型桩。"""
+
+    def __init__(self, content: str | list[str]) -> None:
+        """初始化模型返回内容，支持修复重试场景。"""
         self.content = content
         self.calls = 0
         self.response_formats = []
+        self.messages = []
 
     def complete(
         self,
@@ -26,6 +30,9 @@ class JsonRouterModel:
         self.calls += 1
         self.messages = messages
         self.response_formats.append(response_format)
+        if isinstance(self.content, list):
+            index = min(self.calls - 1, len(self.content) - 1)
+            return self.content[index]
         return self.content
 
 
@@ -186,6 +193,57 @@ class RouterContractTest(unittest.TestCase):
         self.assertEqual(route.missing_slots, ["user_intent"])
         self.assertEqual(route.allowed_tools, [])
         self.assertFalse(route.should_call_tool)
+        self.assertEqual(model.calls, 2)
+        self.assertIsNotNone(route.route_failure)
+        assert route.route_failure is not None
+        self.assertEqual(route.route_failure.category, "json_parse_error")
+        self.assertIn("无法稳定识别", route.route_reason)
+
+    def test_model_router_repairs_invalid_json_before_clarifying_user(self) -> None:
+        model = JsonRouterModel(
+            [
+                "这不是 JSON",
+                """
+                {
+                  "scene": "KNOWLEDGE_QA",
+                  "standard_intent": "POLICY_OR_PRODUCT_QA",
+                  "confidence": 0.93,
+                  "route_reason": "修复后判断为政策产品问答。"
+                }
+                """,
+            ]
+        )
+        router = ControlledIntentRouter(model=model)
+
+        route = router.route(ChatRequest(user_message="信易贷适合哪些企业？"))
+
+        self.assertEqual(route.scene, "KNOWLEDGE_QA")
+        self.assertEqual(route.intent, "POLICY_OR_PRODUCT_QA")
+        self.assertEqual(route.route_source, "model_repair")
+        self.assertEqual(route.allowed_tools, ["rag_search"])
+        self.assertIsNone(route.route_failure)
+        self.assertEqual(model.calls, 2)
+
+    def test_model_router_preserves_schema_failure_after_repair_exhausted(self) -> None:
+        model = JsonRouterModel(
+            [
+                '{"scene":"BAD_SCENE","standard_intent":"NOT_ALLOWED","confidence":0.9}',
+                '{"scene":"BAD_SCENE","standard_intent":"NOT_ALLOWED","confidence":2}',
+            ]
+        )
+        router = ControlledIntentRouter(model=model)
+
+        route = router.route(ChatRequest(user_message="信易贷适合哪些企业？"))
+
+        self.assertEqual(route.scene, "UNKNOWN")
+        self.assertEqual(route.intent, "LOW_CONFIDENCE")
+        self.assertEqual(route.allowed_tools, [])
+        self.assertFalse(route.should_call_tool)
+        self.assertIsNotNone(route.route_failure)
+        assert route.route_failure is not None
+        self.assertIn(route.route_failure.category, {"invalid_enum", "schema_validation_error"})
+        self.assertEqual(route.route_failure.attempts, 2)
+        self.assertGreaterEqual(len(route.route_failure.suggested_questions), 1)
 
     def test_policy_blocks_low_confidence_route(self) -> None:
         policy = RoutePolicy(min_confidence=0.7)

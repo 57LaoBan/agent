@@ -9,7 +9,14 @@ from pydantic import ValidationError
 from xinyidai_agent.capabilities.base import CapabilityPolicy
 from xinyidai_agent.capabilities.catalog import default_capability_catalog
 from xinyidai_agent.llm import JSON_OBJECT_RESPONSE_FORMAT, ChatModel
-from xinyidai_agent.protocol import ChatRequest, ModelRouteOutput, RouteDecision, StandardIntent
+from xinyidai_agent.protocol import (
+    ChatRequest,
+    ModelRouteOutput,
+    RouteDecision,
+    RouteFailure,
+    RouteFailureCategory,
+    StandardIntent,
+)
 from xinyidai_agent.router.rules import unknown_route
 
 
@@ -43,26 +50,52 @@ class ModelIntentRouter:
         self,
         model: ChatModel,
         catalog: list[CapabilityPolicy] | None = None,
+        max_repair_attempts: int = 1,
     ) -> None:
+        """初始化模型路由器和路由修复次数。"""
         self._model = model
         self._catalog = catalog or default_capability_catalog()
         self._intent_menu_text = self._render_intent_menu(self._catalog)
+        if max_repair_attempts < 0:
+            raise ValueError("max_repair_attempts 不能为负数")
+        self._max_repair_attempts = max_repair_attempts
 
     def route(self, request: ChatRequest) -> RouteDecision:
         raw = self._model.complete(
             self._build_messages(request),
             response_format=JSON_OBJECT_RESPONSE_FORMAT,
         )
-        try:
-            payload = self._parse_json(raw)
-            payload = self._normalize_model_payload(payload)
-            model_output = ModelRouteOutput.model_validate(payload)
-            return self._to_route_decision(model_output)
-        except (ValueError, TypeError, ValidationError) as exc:
-            return unknown_route(
-                request,
-                reason=f"模型路由结果无法解析，已转入追问确认，不执行工具：{exc}",
-            )
+        failure: RouteFailure | None = None
+        for attempt in range(self._max_repair_attempts + 1):
+            try:
+                payload = self._parse_json(raw)
+                payload = self._normalize_model_payload(payload)
+                model_output = ModelRouteOutput.model_validate(payload)
+                route_source = "model" if attempt == 0 else "model_repair"
+                return self._to_route_decision(model_output, route_source=route_source)
+            except (ValueError, TypeError, ValidationError) as exc:
+                failure = self._route_failure_from_exception(exc, attempts=attempt + 1)
+                if attempt < self._max_repair_attempts and failure.retryable:
+                    raw = self._model.complete(
+                        self._build_repair_messages(request, raw, failure),
+                        response_format=JSON_OBJECT_RESPONSE_FORMAT,
+                    )
+                    continue
+                return unknown_route(
+                    request,
+                    reason=failure.user_reason,
+                    route_source="model_repair_failed",
+                    route_failure=failure,
+                )
+
+        # 理论上循环内必然 return；保留兜底可防止未来修改导致 None 泄漏。
+        assert failure is not None
+        return unknown_route(
+            request,
+            reason=failure.user_reason,
+            route_source="model_repair_failed",
+            route_failure=failure,
+        )
 
     def _build_messages(self, request: ChatRequest) -> list[dict[str, str]]:
         return [
@@ -114,6 +147,41 @@ class ModelIntentRouter:
                 "content": (
                     f"用户输入：{request.user_message}\n"
                     f"已有上下文 metadata：{json.dumps(request.metadata, ensure_ascii=False)}"
+                ),
+            },
+        ]
+
+    def _build_repair_messages(
+        self,
+        request: ChatRequest,
+        raw_output: str,
+        failure: RouteFailure,
+    ) -> list[dict[str, str]]:
+        """构造一次性路由修复提示，只允许模型修正 JSON，不允许进入业务工具。"""
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "你是信易贷业务意图识别器的 JSON 修复器。"
+                    "上一轮输出没有通过后端 schema 校验，你只能返回一个合法 JSON 对象，"
+                    "不要解释、不要追加 Markdown、不要调用工具。\n\n"
+                    "## 修复目标\n"
+                    "- 保持对用户语义的判断，不要臆造业务事实。\n"
+                    "- scene 和 standard_intent 必须从 schema 枚举中选择。\n"
+                    "- confidence 必须是 0.0 到 1.0 的数字。\n"
+                    "- filled_slots 必须是 JSON object；missing_slots 必须是 array。\n"
+                    "- 不允许输出 schema 之外的字段。\n\n"
+                    f"目标 JSON Schema：{MODEL_ROUTE_SCHEMA_TEXT}\n\n"
+                    f"错误分类：{failure.category}\n"
+                    f"错误详情：{failure.internal_reason}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"用户输入：{request.user_message}\n"
+                    f"已有上下文 metadata：{json.dumps(request.metadata, ensure_ascii=False)}\n\n"
+                    f"上一轮原始输出：\n{raw_output}"
                 ),
             },
         ]
@@ -193,7 +261,12 @@ class ModelIntentRouter:
 
         return "UNKNOWN"
 
-    def _to_route_decision(self, output: ModelRouteOutput) -> RouteDecision:
+    def _to_route_decision(
+        self,
+        output: ModelRouteOutput,
+        *,
+        route_source: str = "model",
+    ) -> RouteDecision:
         """模型输出转 RouteDecision；intent 字段统一用 standard_intent。"""
         return RouteDecision(
             scene=output.scene,
@@ -203,5 +276,67 @@ class ModelIntentRouter:
             filled_slots=output.filled_slots,
             missing_slots=output.missing_slots,
             route_reason=output.route_reason,
-            route_source="model",
+            route_source=route_source,
         )
+
+    def _route_failure_from_exception(
+        self,
+        exc: ValueError | TypeError | ValidationError,
+        *,
+        attempts: int,
+    ) -> RouteFailure:
+        """把解析和校验异常归类为可观测的路由失败。"""
+        category = self._classify_exception(exc)
+        return RouteFailure(
+            category=category,
+            internal_reason=str(exc),
+            user_reason=self._user_reason_for_failure(category),
+            suggested_questions=self._suggested_questions_for_failure(category),
+            retryable=category in {"json_parse_error", "schema_validation_error", "invalid_enum"},
+            attempts=attempts,
+        )
+
+    @staticmethod
+    def _classify_exception(exc: ValueError | TypeError | ValidationError) -> RouteFailureCategory:
+        """根据异常类型和 Pydantic 错误码判断失败类别。"""
+        if isinstance(exc, ValidationError):
+            error_types = {str(error.get("type")) for error in exc.errors()}
+            if "literal_error" in error_types:
+                return "invalid_enum"
+            return "schema_validation_error"
+        if isinstance(exc, json.JSONDecodeError):
+            return "json_parse_error"
+        if isinstance(exc, ValueError) and "JSON" in str(exc):
+            return "json_parse_error"
+        return "schema_validation_error"
+
+    @staticmethod
+    def _user_reason_for_failure(category: RouteFailureCategory) -> str:
+        """生成用户可读的失败原因，避免暴露内部 schema 或异常栈。"""
+        if category in {"json_parse_error", "schema_validation_error", "invalid_enum"}:
+            return "我暂时无法稳定识别这句话对应的业务类型，需要您再明确一下办理事项。"
+        if category == "ambiguous_intent":
+            return "您的问题可能对应多个业务场景，需要先确认您想办理哪一类事项。"
+        if category == "low_confidence":
+            return "我对当前业务类型判断不够确定，需要您再确认一下。"
+        if category == "missing_slots":
+            return "当前请求还缺少继续办理所需的信息。"
+        return "当前问题还不能匹配到明确的业务能力，需要您补充说明。"
+
+    @staticmethod
+    def _suggested_questions_for_failure(category: RouteFailureCategory) -> list[str]:
+        """按失败类型给出可展示的候选追问。"""
+        if category in {
+            "json_parse_error",
+            "schema_validation_error",
+            "invalid_enum",
+            "ambiguous_intent",
+            "low_confidence",
+            "capability_resolution_error",
+        }:
+            return [
+                "您是想咨询政策或产品规则吗？",
+                "您是想查询企业授信额度或申请状态吗？",
+                "您是想发起贷款申请或生成企业授权链接吗？",
+            ]
+        return []

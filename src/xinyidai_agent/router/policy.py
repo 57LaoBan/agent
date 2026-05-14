@@ -4,7 +4,13 @@ from typing import Any
 
 from xinyidai_agent.capabilities import CapabilityResolver
 from xinyidai_agent.policies import RiskPolicy
-from xinyidai_agent.protocol import ChatRequest, RouteDecision, SessionStateSnapshot, ToolCall
+from xinyidai_agent.protocol import (
+    ChatRequest,
+    RouteDecision,
+    RouteFailure,
+    SessionStateSnapshot,
+    ToolCall,
+)
 from xinyidai_agent.router.action_validator import ActionValidationResult, PendingActionValidator
 from xinyidai_agent.tools.base import ToolSpec
 
@@ -21,14 +27,29 @@ class RoutePolicy:
         self._risk_policy = RiskPolicy()
 
     def apply(self, request: ChatRequest, route: RouteDecision) -> RouteDecision:
+        """把模型候选路由收口为后端可信 RouteDecision。"""
         raw_intent = route.raw_intent or route.intent
         if route.confidence < self._min_confidence:
+            failure = route.route_failure or RouteFailure(
+                category="low_confidence",
+                internal_reason=(
+                    f"confidence={route.confidence} 低于阈值 {self._min_confidence}。"
+                ),
+                user_reason="我对当前业务类型判断不够确定，需要您再确认一下。",
+                suggested_questions=[
+                    "您是想咨询政策或产品规则吗？",
+                    "您是想查询企业授信额度或申请状态吗？",
+                    "您是想发起贷款申请或生成企业授权链接吗？",
+                ],
+                retryable=False,
+            )
             return self._clarify(
                 route=route,
                 raw_intent=raw_intent,
                 filled_slots=route.filled_slots,
-                reason=f"意图识别置信度低于阈值 {self._min_confidence}，需要追问确认。",
+                reason=failure.user_reason,
                 capability_source="low_confidence",
+                route_failure=failure,
             )
 
         resolution = self._capability_resolver.resolve(route)
@@ -39,6 +60,15 @@ class RoutePolicy:
                 filled_slots=route.filled_slots,
                 reason=resolution.reason,
                 capability_source=resolution.source,
+                route_failure=RouteFailure(
+                    category="capability_resolution_error",
+                    internal_reason=resolution.reason,
+                    user_reason="当前问题还不能匹配到明确的业务能力，需要您补充说明。",
+                    suggested_questions=[
+                        "您是想咨询政策、查询额度，还是办理贷款申请？"
+                    ],
+                    retryable=False,
+                ),
             )
 
         capability = resolution.policy
@@ -55,6 +85,7 @@ class RoutePolicy:
                 filled_slots=filled_slots,
                 reason=route.route_reason,
                 capability_source=resolution.source,
+                route_failure=route.route_failure,
             )
 
         return RouteDecision(
@@ -78,6 +109,7 @@ class RoutePolicy:
             route_source=route.route_source,
             should_call_model=route.should_call_model,
             should_call_tool=bool(capability.allowed_tools),
+            route_failure=route.route_failure,
         )
 
     def _clarify(
@@ -87,7 +119,9 @@ class RoutePolicy:
         filled_slots: dict[str, Any],
         reason: str,
         capability_source: str,
+        route_failure: RouteFailure | None = None,
     ) -> RouteDecision:
+        """构造追问路由，保留失败原因并强制关闭工具调用。"""
         return RouteDecision(
             scene="UNKNOWN",
             intent="LOW_CONFIDENCE",
@@ -104,6 +138,7 @@ class RoutePolicy:
             route_source=route.route_source,
             should_call_model=True,
             should_call_tool=False,
+            route_failure=route_failure,
         )
 
     def validate_tool_action(

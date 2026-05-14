@@ -102,6 +102,16 @@ export type RouteSnapshot = {
   risk_level: string;
   route_reason: string;
   route_source?: string;
+  route_failure?: RouteFailure | null;
+};
+
+export type RouteFailure = {
+  category: string;
+  internal_reason: string;
+  user_reason: string;
+  suggested_questions: string[];
+  retryable: boolean;
+  attempts: number;
 };
 
 export type ToolSnapshot = {

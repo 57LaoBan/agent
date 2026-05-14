@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from xinyidai_agent.protocol import ChatRequest, RouteDecision
+from xinyidai_agent.protocol import ChatRequest, RouteDecision, RouteFailure
 
 
 class RuleBasedRouter:
@@ -64,7 +64,15 @@ def default_knowledge_route(request: ChatRequest, reason: str = "未配置模型
     )
 
 
-def unknown_route(request: ChatRequest, reason: str, confidence: float = 0.0) -> RouteDecision:
+def unknown_route(
+    request: ChatRequest,
+    reason: str,
+    confidence: float = 0.0,
+    *,
+    route_source: str = "local_guard",
+    route_failure: RouteFailure | None = None,
+) -> RouteDecision:
+    """构造无法可信路由时的 fail-closed 决策，默认不开放任何工具。"""
     return RouteDecision(
         scene="UNKNOWN",
         intent="UNKNOWN",
@@ -75,7 +83,8 @@ def unknown_route(request: ChatRequest, reason: str, confidence: float = 0.0) ->
         allowed_tool_categories=[],
         risk_level="read_only",
         route_reason=reason,
-        route_source="local_guard",
+        route_source=route_source,
         should_call_model=True,
         should_call_tool=False,
+        route_failure=route_failure,
     )

@@ -350,11 +350,12 @@ class ControlledAgentLoop:
                 task_stage="decide",
             )
         if route is not None and route.missing_slots:
+            reason = route.route_failure.user_reason if route.route_failure else "缺少必要业务槽位。"
             return ModelDecision(
                 should_finish=False,
                 next_action="ask_user",
                 confidence=route.confidence,
-                reason="缺少必要业务槽位。",
+                reason=reason,
                 missing_info=route.missing_slots,
                 ask_user_question=_clarifying_question(route),
                 source="policy",
@@ -408,7 +409,12 @@ def _extract_user_message(events: list[AgentEvent]) -> str:
 
 
 def _clarifying_question(route: RouteDecision) -> str:
-    """生成澄清问题。"""
+    """生成澄清问题，优先使用结构化路由失败给出的用户可读原因。"""
+    if route.route_failure is not None:
+        questions = " ".join(route.route_failure.suggested_questions)
+        if questions:
+            return f"{route.route_failure.user_reason} {questions}"
+        return route.route_failure.user_reason
     labels = {
         "company_name": "企业名称",
         "product_name": "贷款产品",

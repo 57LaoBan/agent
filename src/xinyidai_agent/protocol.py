@@ -116,6 +116,15 @@ ActionType = Literal["business_action", "open_url", "open_miniprogram", "contact
 NextStepType = Literal["none", "suggest_tool", "ask_user", "stop_with_action"]
 DecisionAction = Literal["finish", "continue_tool", "ask_user", "reject"]
 ConfirmationStatus = Literal["none", "waiting", "confirmed", "cancelled"]
+RouteFailureCategory = Literal[
+    "json_parse_error",
+    "schema_validation_error",
+    "invalid_enum",
+    "low_confidence",
+    "ambiguous_intent",
+    "missing_slots",
+    "capability_resolution_error",
+]
 
 
 class AuditInfo(BaseModel):
@@ -257,6 +266,19 @@ class ModelRouteOutput(BaseModel):
     route_reason: str
 
 
+class RouteFailure(BaseModel):
+    """路由失败的结构化原因，区分内部诊断和用户可见追问依据。"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    category: RouteFailureCategory
+    internal_reason: str
+    user_reason: str
+    suggested_questions: list[str] = Field(default_factory=list)
+    retryable: bool = True
+    attempts: int = Field(default=1, ge=1)
+
+
 class RouteDecision(BaseModel):
     """意图路由结果，描述当前业务场景、槽位和允许的工具范围。"""
 
@@ -279,6 +301,7 @@ class RouteDecision(BaseModel):
     route_source: str = "unknown"
     should_call_model: bool = True
     should_call_tool: bool = False
+    route_failure: RouteFailure | None = None
 
 
 class ToolCall(BaseModel):
