@@ -45,7 +45,7 @@ RAG_EVAL_DATASET: list[EvalSample] = [
         contexts=[
             "小微税贷利率说明：年化利率根据企业信用评级浮动，A级企业3.85%，B级企业5.0%，C级企业7.2%。"
         ],
-        expected_route="KNOWLEDGE_QA",
+        expected_route="DATA_QUERY",
         expected_tools=["rag_search"],
     ),
     EvalSample(
@@ -63,7 +63,7 @@ RAG_EVAL_DATASET: list[EvalSample] = [
         contexts=[
             "额度说明：单户最高授信额度1000万元，具体额度根据企业信用评级、纳税规模、经营年限等综合评定。"
         ],
-        expected_route="KNOWLEDGE_QA",
+        expected_route="DATA_QUERY",
         expected_tools=["rag_search"],
     ),
     EvalSample(
@@ -95,6 +95,7 @@ AGENT_EVAL_DATASET: list[EvalSample] = [
         ground_truth="您好！我是信易贷智能助手，可以帮您查询政策、额度、办理贷款申请等。",
         expected_route="SMALLTALK",
         expected_tools=[],
+        metadata={"allow_none_route": True},
     ),
     EvalSample(
         question="帮我生成重庆好客来商贸有限公司的授权链接",

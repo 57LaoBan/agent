@@ -11,3 +11,8 @@ from pathlib import Path
 # 确保 src 在路径中
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+
+# 加载 config/.env 中的 API key 到环境变量
+from xinyidai_agent.config import AgentConfig, load_env_file  # noqa: E402
+
+load_env_file(AgentConfig.default_env_path())

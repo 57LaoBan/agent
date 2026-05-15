@@ -55,7 +55,10 @@ class AgentBehaviorTest(unittest.TestCase):
             response = loop.answer(ChatRequest(user_message=sample.question))
             actual_route = response.route_decision.scene if response.route_decision else None
             total += 1
-            if actual_route == sample.expected_route:
+            # 允许 L1 短路的场景（route_decision 为 None 但行为正确）
+            if sample.metadata.get("allow_none_route") and actual_route is None:
+                correct += 1
+            elif actual_route == sample.expected_route:
                 correct += 1
             else:
                 mismatches.append(

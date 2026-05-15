@@ -61,8 +61,8 @@ class DeepEvalHallucinationTest(unittest.TestCase):
         loop = ControlledAgentLoop(model=model)
 
         # 配置 DeepEval 使用百炼兼容接口
-        os.environ.setdefault("OPENAI_API_KEY", config.llm_api_key)
-        os.environ.setdefault("OPENAI_BASE_URL", config.llm_base_url)
+        os.environ["OPENAI_API_KEY"] = config.llm_api_key
+        os.environ["OPENAI_BASE_URL"] = config.llm_base_url
 
         test_cases: list[LLMTestCase] = []
         for sample in RAG_EVAL_DATASET:
@@ -79,7 +79,7 @@ class DeepEvalHallucinationTest(unittest.TestCase):
 
         metric = HallucinationMetric(
             threshold=0.5,
-            model=f"openai/{config.llm_model}",
+            model=config.llm_model,
         )
 
         results = evaluate(test_cases=test_cases, metrics=[metric])
@@ -120,8 +120,8 @@ class DeepEvalToolCorrectnessTest(unittest.TestCase):
         model = OpenAICompatibleChatModel(config)
         loop = ControlledAgentLoop(model=model)
 
-        os.environ.setdefault("OPENAI_API_KEY", config.llm_api_key)
-        os.environ.setdefault("OPENAI_BASE_URL", config.llm_base_url)
+        os.environ["OPENAI_API_KEY"] = config.llm_api_key
+        os.environ["OPENAI_BASE_URL"] = config.llm_base_url
 
         test_cases: list[LLMTestCase] = []
         for sample in AGENT_EVAL_DATASET:
@@ -187,8 +187,8 @@ class DeepEvalAnswerRelevancyTest(unittest.TestCase):
         model = OpenAICompatibleChatModel(config)
         loop = ControlledAgentLoop(model=model)
 
-        os.environ.setdefault("OPENAI_API_KEY", config.llm_api_key)
-        os.environ.setdefault("OPENAI_BASE_URL", config.llm_base_url)
+        os.environ["OPENAI_API_KEY"] = config.llm_api_key
+        os.environ["OPENAI_BASE_URL"] = config.llm_base_url
 
         test_cases: list[LLMTestCase] = []
         all_samples = [*RAG_EVAL_DATASET, *AGENT_EVAL_DATASET]
@@ -201,7 +201,7 @@ class DeepEvalAnswerRelevancyTest(unittest.TestCase):
 
         metric = AnswerRelevancyMetric(
             threshold=0.5,
-            model=f"openai/{config.llm_model}",
+            model=config.llm_model,
         )
 
         results = evaluate(test_cases=test_cases, metrics=[metric])
