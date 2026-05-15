@@ -4,21 +4,31 @@ version = "0.1.0"
 description = "信易贷聊天 Agent 重构工程"
 requires-python = ">=3.11"
 dependencies = [
+    # --- Web 框架 ---
     "fastapi>=0.110.0",
-    "mcp>=1.2.0",
-    "numpy>=1.26.0",
+    "uvicorn[standard]>=0.27.0",
+    # --- LLM ---
+    "litellm>=1.40.0",
     "openai>=1.0.0",
-    "openpyxl>=3.1.0",
+    # --- RAG ---
+    "sentence-transformers>=5.0.0",
+    "numpy>=1.26.0",
+    # --- 记忆 ---
+    "tiktoken>=0.7.0",
+    # --- 数据库 ---
     "psycopg[binary]>=3.1.0",
+    # --- 协议 & 工具 ---
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
-    "sentence-transformers>=5.0.0",
-    "unstructured-inference>=1.2.0",
-    "unstructured[pdf]>=0.18.0",
-    "uvicorn[standard]>=0.27.0",
+    "mcp>=1.2.0",
 ]
 
 [project.optional-dependencies]
+rag-ingest = [
+    "openpyxl>=3.1.0",
+    "unstructured-inference>=1.2.0",
+    "unstructured[pdf]>=0.18.0",
+]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.8.0",

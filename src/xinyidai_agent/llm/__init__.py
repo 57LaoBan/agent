@@ -1,6 +1,8 @@
-"""兼容桥接：保持旧 import 路径可用，实际实现已迁移到 llm/ 子包。"""
+"""LLM 网关层。
 
-# ruff: noqa: F401
+对外暴露 ChatModel Protocol 和具体实现，上层模块只依赖 Protocol。
+"""
+
 from xinyidai_agent.llm.protocol import ChatModel, JSON_OBJECT_RESPONSE_FORMAT, ResponseFormat
 from xinyidai_agent.llm.gateway import LiteLLMGateway, OpenAICompatibleChatModel
 

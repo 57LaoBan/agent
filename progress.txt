@@ -1,7 +1,0 @@
-[REACT_REFAC_START] 2026-05-09T07:33:46.8219505Z pytest: 128 passed, 4 subtests passed in 4.19s; diag_intent_router: 9/9
-[REACT_REFAC_DONE] 2026-05-09T08:12:23.3371160Z
-pytest: 182 passed, 4 subtests passed, 0 failed
-diag_intent_router: 9/9
-smoke_chat_endpoint: 11/11
-旧文件已删除：runtime_policy.py
-旧方法已删除：_plan_tool / _parse_tool_plan / _build_deterministic_tool_call / _answer_without_tool
