@@ -25,3 +25,6 @@ rag_corpus/db/
 rag_corpus/logs/
 INTERVIEW_PREP.pdf
 
+# 评测产物（DeepEval 缓存、最近一次 run、遥测）与本地评测报告
+.deepeval/
+reports/
