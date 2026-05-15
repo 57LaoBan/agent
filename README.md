@@ -169,7 +169,8 @@ src/xinyidai_agent/
 test/
 ├── contract/                   # 协议契约测试（70+ 用例）
 ├── smoke/                      # 冒烟（百炼连通性 / 性能基线）
-└── e2e/                        # 端到端（11 query 路径矩阵 + 反幻觉专项）
+├── e2e/                        # 端到端（11 query 路径矩阵 + 反幻觉专项）
+└── evaluation/                 # 离线质量评测（RAG / Agent 行为 / DeepEval 用例）
 
 docs/design/
 ├── AGENT_RUNTIME_REACT_DESIGN.md            # 设计文档（12 章）
@@ -186,7 +187,30 @@ docs/design/
 
 ---
 
-## 八、设计文档导航
+## 八、质量评测
+
+仓库中保留了三层质量验证，目的与边界差别比较大：
+
+| 层 | 位置 | 目的 | 当前状态 |
+|---|---|---|---|
+| 契约测试 | `test/contract/` | 锁死协议、护栏、fail-closed 行为 | 主力，PR 必跑 |
+| 冒烟 / E2E | `test/smoke/` `test/e2e/` | 真实链路连通、路径矩阵、反幻觉专项 | 主力，连通后跑 |
+| 离线评测 | `test/evaluation/` `src/xinyidai_agent/evaluation/` | RAG 召回质量、答案忠实度、Agent 行为指标 | **未对齐生产**，仅作骨架 |
+
+`test/evaluation/test_deepeval_agent.py` 当前用 `Hallucination` 指标对受控降级文案打分会被 LLM judge 误判（指标语义假定 Agent 已经看到 context，但当前业务工具尚未接真实后端，Agent 故意按"无证据则拒答"的契约降级）。这部分**不是 Agent 的失败，是评测姿势与运行时设计错位**。
+
+可演进的扩展思路（不在当前阶段实施）：
+
+- 数据集：`golden / regression / replay / adversarial` 四类按场景分桶版本化
+- 指标：retrieval 用 RAGAS、generation 用 faithfulness、agent 用 trajectory + 拒答正确率、运行成本/延迟独立成层
+- Runner：现有 pytest + `RAGEvaluator` 保留作单元层；如需更完整的 trace + scorer，引入 Inspect AI 或 promptfoo 作 runner，DeepEval 仅当指标实现器
+- 闭环：在线 trace 采样 → 异步 judge → 失败回灌 regression；judge 本身需要定期人工 meta-eval 校准
+
+落到生产前需要先解决的最小动作：把"工具是否就绪 / 是否走降级"作为评测维度独立出来，避免 hallucination 指标被降级文案污染。
+
+---
+
+## 九、设计文档导航
 
 更详细的设计推导和实现细节见：
 
