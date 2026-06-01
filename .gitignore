@@ -28,3 +28,11 @@ INTERVIEW_PREP.pdf
 # 评测产物（DeepEval 缓存、最近一次 run、遥测）与本地评测报告
 .deepeval/
 reports/
+.evaluation_results/
+
+# 练习脚本和面试准备文档
+123.py
+reverse_list.py
+环形链表.py
+docs/interview/
+docs/java-concurrency-interview.md
